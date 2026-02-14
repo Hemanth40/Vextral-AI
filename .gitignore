@@ -1,0 +1,66 @@
+# ========================
+# ENVIRONMENT & SECRETS
+# ========================
+.env
+.env.local
+.env.production
+.env*.local
+!.env.example
+!.env.local.example
+
+# ========================
+# PYTHON / BACKEND
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ========================
+# NODE / FRONTEND
+# ========================
+node_modules/
+.next/
+out/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ========================
+# IDEs & EDITORS
+# ========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ========================
+# OS FILES
+# ========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# ========================
+# MISC
+# ========================
+*.log
+*.pid
+*.seed
+*.pid.lock
+.cache/
+coverage/
+.nyc_output/
