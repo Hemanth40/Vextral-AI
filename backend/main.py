@@ -29,6 +29,9 @@ app = FastAPI(
     description="Ask Your Documents - Multi-Tenant RAG Platform",
     version="1.0.0"
 )
+@app.get("/health")
+def health():
+    return "OK"
 
 # Configure CORS - Allow all origins for Vercel frontend
 app.add_middleware(
