@@ -82,7 +82,8 @@ async def ask_question(request: ChatRequest):
         answer = generator.generate_answer(
             request.question,
             relevant_chunks,
-            request.tenant_id
+            request.tenant_id,
+            chat_history=request.chat_history
         )
         logger.info(f"✓ Answer generated")
         

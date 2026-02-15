@@ -87,9 +87,14 @@ export default function Chat() {
     setLoading(true);
 
     try {
+      // Build chat history for context (last 10 messages)
+      const recentHistory = [...messages, userMessage]
+        .slice(-10)
+        .map((m) => ({ role: m.role, content: m.content }));
+
       const response = await fetch(`${BACKEND_URL}/api/chat/ask`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: input, tenant_id: TENANT_ID, source_file: selectedDoc }),
+        body: JSON.stringify({ question: input, tenant_id: TENANT_ID, source_file: selectedDoc, chat_history: recentHistory }),
       });
 
       if (!response.ok) throw new Error('Failed to get answer');

@@ -48,6 +48,7 @@ class GeneratorService:
         question: str, 
         context_chunks: list[str], 
         tenant_id: str,
+        chat_history: list = None,
         stream: bool = False
     ) -> str:
         """
@@ -112,15 +113,24 @@ INSTRUCTIONS:
                 
                 logger.info(f"🌙 Using Kimi K2.5 (General AI)")
 
-            # Call the selected model
+            # Build messages with conversation history
             api_start = time.time()
+            
+            messages = [{"role": "system", "content": system_prompt}]
+            
+            # Add recent chat history for conversational memory
+            if chat_history:
+                for msg in chat_history[:-1]:  # exclude the current question
+                    role = msg.get("role", "user")
+                    if role in ("user", "assistant"):
+                        messages.append({"role": role, "content": msg.get("content", "")})
+            
+            # Add current question
+            messages.append({"role": "user", "content": user_prompt})
             
             response = client.chat.completions.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
+                messages=messages,
                 temperature=0.3,
                 max_tokens=1024,
                 stream=stream
