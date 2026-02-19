@@ -5,6 +5,7 @@ Converts text and images into 2048-dimensional vectors
 """
 
 import os
+from typing import Optional
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -48,6 +49,60 @@ class EmbedderService:
         except Exception as e:
             print(f"Error embedding text: {e}")
             raise Exception(f"Failed to generate text embedding: {str(e)}")
+
+    def embed_text_batch(
+        self,
+        texts: list[str],
+        input_type: str = "passage",
+        batch_size: int = 32
+    ) -> list[Optional[list[float]]]:
+        """
+        Batch embedding for text chunks. Returns one embedding per input text.
+        Failed items are returned as None (best-effort mode).
+        """
+        if not texts:
+            return []
+
+        batch_size = max(1, min(batch_size, 64))
+        results: list[Optional[list[float]]] = []
+
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+
+            try:
+                response = self.client.embeddings.create(
+                    input=batch,
+                    model=self.model,
+                    encoding_format="float",
+                    extra_body={"input_type": input_type}
+                )
+
+                # Preserve original order via the API index field.
+                ordered: list[Optional[list[float]]] = [None] * len(batch)
+                for item in response.data:
+                    idx = getattr(item, "index", None)
+                    if isinstance(idx, int) and 0 <= idx < len(batch):
+                        ordered[idx] = item.embedding
+
+                # Fallback for any missing entries in the batch.
+                for j, emb in enumerate(ordered):
+                    if emb is None:
+                        try:
+                            ordered[j] = self.embed_text(batch[j], input_type=input_type)
+                        except Exception:
+                            ordered[j] = None
+
+                results.extend(ordered)
+
+            except Exception as batch_error:
+                print(f"Batch embedding failed, falling back to per-item mode: {batch_error}")
+                for text in batch:
+                    try:
+                        results.append(self.embed_text(text, input_type=input_type))
+                    except Exception:
+                        results.append(None)
+
+        return results
     
     def embed_image(self, image_base64: str) -> list[float]:
         """

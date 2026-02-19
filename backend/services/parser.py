@@ -25,8 +25,12 @@ class ParserService:
     
     def __init__(self):
         """Initialize the parser service"""
-        self.max_chunk_words = 500
-        self.min_chunk_words = 20
+        # Smaller chunks improve retrieval precision for document Q&A.
+        self.max_chunk_words = 320
+        self.min_chunk_words = 25
+        self.ocr_min_text_chars = int(os.getenv("PDF_OCR_MIN_TEXT_CHARS", "30"))
+        self.table_min_text_chars = int(os.getenv("PDF_TABLE_MIN_TEXT_CHARS", "180"))
+        self.ocr_scale = float(os.getenv("PDF_OCR_SCALE", "1.7"))
         
         # Initialize NVIDIA NIM client for Vision (images only)
         api_key = os.getenv("NVIDIA_API_KEY_KIMI", os.getenv("NVIDIA_API_KEY"))
@@ -37,30 +41,83 @@ class ParserService:
         self.vision_model = "meta/llama-3.2-11b-vision-instruct"
     
     def chunk_text(self, text: str, max_words: int = 500) -> List[str]:
-        """Split text into chunks with overlap for context continuity"""
-        # Clean up text first
+        """Split text into paragraph-aware chunks with overlap for better retrieval precision."""
         text = self._clean_text(text)
-        
-        words = text.split()
-        if not words:
+        if not text:
             return []
-            
-        chunks = []
-        overlap = 50
-        step = max_words - overlap
-        
-        if step < 1:
-            step = 1
-            
-        for i in range(0, len(words), step):
-            chunk_words = words[i:i + max_words]
-            
-            if len(chunk_words) < self.min_chunk_words and len(chunks) > 0:
+
+        max_words = max(60, max_words)
+        overlap_words = min(40, max_words // 4)
+        segment_step = max(max_words - overlap_words, 1)
+
+        paragraphs = [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
+        if not paragraphs:
+            paragraphs = [text]
+
+        chunks: List[str] = []
+        current_words: List[str] = []
+
+        def flush_current_chunk():
+            nonlocal current_words
+            if not current_words:
+                return
+
+            if len(current_words) >= self.min_chunk_words or not chunks:
+                chunks.append(" ".join(current_words))
+
+            current_words = current_words[-overlap_words:] if overlap_words > 0 else []
+
+        for paragraph in paragraphs:
+            paragraph_words = paragraph.split()
+            if not paragraph_words:
                 continue
-                
-            chunks.append(" ".join(chunk_words))
-            
-        return chunks
+
+            # Split very large paragraphs by sentence first.
+            if len(paragraph_words) > max_words:
+                sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", paragraph) if s.strip()]
+                if not sentences:
+                    sentences = [
+                        " ".join(paragraph_words[i:i + max_words])
+                        for i in range(0, len(paragraph_words), segment_step)
+                    ]
+
+                for sentence in sentences:
+                    sentence_words = sentence.split()
+                    if not sentence_words:
+                        continue
+
+                    if len(sentence_words) > max_words:
+                        for i in range(0, len(sentence_words), segment_step):
+                            segment = sentence_words[i:i + max_words]
+                            if len(segment) >= self.min_chunk_words:
+                                chunks.append(" ".join(segment))
+                        continue
+
+                    if len(current_words) + len(sentence_words) > max_words and current_words:
+                        flush_current_chunk()
+
+                    current_words.extend(sentence_words)
+                continue
+
+            if len(current_words) + len(paragraph_words) > max_words and current_words:
+                flush_current_chunk()
+
+            current_words.extend(paragraph_words)
+
+        if current_words and (len(current_words) >= self.min_chunk_words or not chunks):
+            chunks.append(" ".join(current_words))
+
+        # Remove exact duplicate chunks after normalization.
+        deduped_chunks: List[str] = []
+        seen: set[str] = set()
+        for chunk in chunks:
+            normalized = " ".join(chunk.lower().split())
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped_chunks.append(chunk)
+
+        return deduped_chunks
     
     def _clean_text(self, text: str) -> str:
         """Clean extracted text for better quality"""
@@ -156,28 +213,54 @@ class ParserService:
                         
                         if block_text.strip():
                             page_text_parts.append(block_text.strip())
-                
-                # 2. Extract tables if available
-                try:
-                    tables = page.find_tables()
-                    if tables and tables.tables:
-                        for table in tables.tables:
-                            table_data = table.extract()
-                            if table_data:
-                                # Convert to markdown table
-                                md_table = self._table_to_markdown(table_data)
-                                if md_table:
-                                    page_text_parts.append(f"\n{md_table}\n")
-                                    print(f"   📊 Found table on page {page_num + 1}")
-                except Exception:
-                    # Table extraction not available in older PyMuPDF versions
-                    pass
-                
+
+                base_page_text = "\n\n".join(page_text_parts)
+
+                # 2. Extract tables only when there's enough text context to justify extra cost.
+                if len(base_page_text.strip()) >= self.table_min_text_chars:
+                    try:
+                        tables = page.find_tables()
+                        if tables and tables.tables:
+                            for table in tables.tables:
+                                table_data = table.extract()
+                                if table_data:
+                                    md_table = self._table_to_markdown(table_data)
+                                    if md_table:
+                                        page_text_parts.append(f"\n{md_table}\n")
+                                        print(f"   📊 Found table on page {page_num + 1}")
+                    except Exception:
+                        # Table extraction is best-effort and version-dependent.
+                        pass
+
                 # Combine all parts for this page
                 full_page_text = "\n\n".join(page_text_parts)
-                
+
+                # OCR fallback for scanned/image-based PDF pages.
+                if not full_page_text or len(full_page_text.strip()) < self.ocr_min_text_chars:
+                    has_images = len(page.get_images(full=True)) > 0
+                    if has_images:
+                        print(f"   ⚠️ Low text detected on page {page_num + 1}, trying OCR fallback...")
+                        try:
+                            scale = min(max(self.ocr_scale, 1.2), 2.4)
+                            pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+
+                            # JPEG payload is much smaller than PNG and speeds up Vision API calls.
+                            image = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+                            jpeg_buffer = io.BytesIO()
+                            image.save(jpeg_buffer, format="JPEG", quality=80, optimize=True)
+                            page_image_base64 = base64.b64encode(jpeg_buffer.getvalue()).decode("utf-8")
+
+                            ocr_text = self._extract_text_with_ai(page_image_base64)
+                            if ocr_text and len(ocr_text.strip()) >= self.ocr_min_text_chars:
+                                full_page_text = ocr_text
+                                print(f"   ✓ OCR fallback recovered text on page {page_num + 1}")
+                        except Exception as ocr_error:
+                            print(f"   ⚠️ OCR fallback failed on page {page_num + 1}: {ocr_error}")
+                    else:
+                        print(f"   ⚠️ Low text on page {page_num + 1}, skipped OCR (no embedded image)")
+
                 if not full_page_text or len(full_page_text.strip()) < 10:
-                    print(f"   ⚠️ No text on page {page_num + 1}")
+                    print(f"   ⚠️ No usable text on page {page_num + 1}")
                     continue
                 
                 # Chunk the page text

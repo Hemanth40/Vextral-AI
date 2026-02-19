@@ -35,7 +35,7 @@ async def upload_document(
     logger.info(f"📄 Processing upload: {file.filename} for tenant: {tenant_id}")
     
     # Step 1: Validate file type
-    allowed_extensions = ['.pdf', '.png', '.jpg', '.jpeg']
+    allowed_extensions = ['.pdf', '.docx', '.txt', '.csv', '.md', '.json', '.png', '.jpg', '.jpeg', '.webp']
     file_ext = '.' + file.filename.lower().split('.')[-1]
     
     if file_ext not in allowed_extensions:
@@ -53,35 +53,67 @@ async def upload_document(
         logger.info(f"⚙️  Parsing document...")
         chunks = parser.parse_document(file_bytes, file.filename)
         logger.info(f"✓ Extracted {len(chunks)} chunks")
+
+        if not chunks:
+            raise HTTPException(status_code=400, detail="No readable content found in this document")
         
         # Step 4: Generate embeddings
         logger.info(f"⚙️  Generating embeddings...")
         chunks_with_vectors = []
-        
-        for i, chunk in enumerate(chunks):
-            try:
-                if chunk["chunk_type"] == "text":
-                    vector = embedder.embed_text(chunk["text"], input_type="passage")
-                else:  # image
-                    vector = embedder.embed_image(chunk["image_base64"])
-                
+
+        text_items = [
+            (i, chunk) for i, chunk in enumerate(chunks)
+            if chunk.get("chunk_type") == "text" and str(chunk.get("text", "")).strip()
+        ]
+        image_items = [
+            (i, chunk) for i, chunk in enumerate(chunks)
+            if chunk.get("chunk_type") == "image"
+        ]
+
+        # Batch embed text chunks for faster uploads on large documents.
+        if text_items:
+            texts = [chunk["text"] for _, chunk in text_items]
+            vectors = embedder.embed_text_batch(texts, input_type="passage", batch_size=32)
+
+            for (orig_index, chunk), vector in zip(text_items, vectors):
+                if vector is None:
+                    logger.warning(f"⚠️  Warning: Failed to embed text chunk {orig_index}")
+                    continue
+
                 chunks_with_vectors.append({
                     "id": str(uuid4()),
                     "vector": vector,
                     "text": chunk["text"],
                     "source_file": file.filename,
                     "page_number": chunk.get("page_number", 0),
-                    "chunk_type": chunk["chunk_type"]
+                    "chunk_type": chunk["chunk_type"],
+                    "chunk_index": chunk.get("chunk_index", orig_index)
                 })
-                
-                if (i + 1) % 5 == 0:
-                    logger.info(f"  Processed {i + 1}/{len(chunks)} chunks...")
-                    
+
+        # Image chunks are typically fewer; keep them per-item.
+        for orig_index, chunk in image_items:
+            try:
+                vector = embedder.embed_image(chunk["image_base64"])
+                chunks_with_vectors.append({
+                    "id": str(uuid4()),
+                    "vector": vector,
+                    "text": chunk["text"],
+                    "source_file": file.filename,
+                    "page_number": chunk.get("page_number", 0),
+                    "chunk_type": chunk["chunk_type"],
+                    "chunk_index": chunk.get("chunk_index", orig_index)
+                })
             except Exception as e:
-                logger.warning(f"⚠️  Warning: Failed to embed chunk {i}: {e}")
+                logger.warning(f"⚠️  Warning: Failed to embed image chunk {orig_index}: {e}")
                 continue
         
         logger.info(f"✓ Generated {len(chunks_with_vectors)} embeddings")
+
+        if not chunks_with_vectors:
+            raise HTTPException(
+                status_code=400,
+                detail="Unable to generate embeddings from this document. Try a clearer or text-based file."
+            )
         
         # Step 5: Ensure collection exists
         logger.info(f"⚙️  Preparing vector database...")
@@ -105,6 +137,8 @@ async def upload_document(
             "chunks_processed": len(chunks_with_vectors)
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ ERROR: {str(e)}")
         logger.info(f"{'='*60}")

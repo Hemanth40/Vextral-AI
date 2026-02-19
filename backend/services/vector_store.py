@@ -85,7 +85,8 @@ class VectorStoreService:
                         "text": chunk["text"],
                         "source_file": chunk["source_file"],
                         "page_number": chunk.get("page_number", 0),
-                        "chunk_type": chunk.get("chunk_type", "text")
+                        "chunk_type": chunk.get("chunk_type", "text"),
+                        "chunk_index": chunk.get("chunk_index", 0)
                     }
                 )
                 points.append(point)
@@ -110,9 +111,16 @@ class VectorStoreService:
             print(f"Error upserting chunks for {tenant_id}: {e}")
             raise Exception(f"Failed to upsert chunks: {str(e)}")
     
-    def search_chunks(self, tenant_id: str, query_vector: list[float], top_k: int = 5, source_file: str = None) -> list[str]:
+    def search_chunks_detailed(
+        self,
+        tenant_id: str,
+        query_vector: list[float],
+        top_k: int = 5,
+        source_file: str = None
+    ) -> list[dict]:
         """
-        Search for the most similar chunks in the tenant's collection
+        Search for the most similar chunks in the tenant's collection and return
+        text with metadata/scores for downstream reranking.
         
         Args:
             tenant_id: The tenant identifier
@@ -121,7 +129,7 @@ class VectorStoreService:
             source_file: Optional filename to filter search to one document
             
         Returns:
-            List of text strings from the most relevant chunks
+            List of chunk dictionaries with text, score, source_file, page_number, chunk_type
         """
         collection_name = f"tenant_{tenant_id}"
         
@@ -150,18 +158,46 @@ class VectorStoreService:
             # Debug: print scores
             if results:
                 for i, r in enumerate(results[:3]):
-                    print(f"  Result {i+1}: score={r.score:.4f}, text={r.payload['text'][:60]}...")
+                    payload = r.payload or {}
+                    preview = str(payload.get("text", ""))[:60]
+                    print(f"  Result {i+1}: score={r.score:.4f}, text={preview}...")
             else:
                 print(f"  ⚠️ No results found")
             
-            # Extract text from results
-            chunks = [result.payload["text"] for result in results]
+            chunks: list[dict] = []
+            for result in results:
+                payload = result.payload or {}
+                text = str(payload.get("text", "")).strip()
+                if not text:
+                    continue
+
+                chunks.append({
+                    "text": text,
+                    "score": float(result.score) if result.score is not None else 0.0,
+                    "source_file": payload.get("source_file", source_file),
+                    "page_number": payload.get("page_number", 0),
+                    "chunk_type": payload.get("chunk_type", "text"),
+                    "chunk_index": payload.get("chunk_index", 0),
+                })
+
             print(f"✓ Found {len(chunks)} relevant chunks")
             return chunks
             
         except Exception as e:
             print(f"Error searching chunks for {tenant_id}: {e}")
             return []
+
+    def search_chunks(self, tenant_id: str, query_vector: list[float], top_k: int = 5, source_file: str = None) -> list[str]:
+        """
+        Backward-compatible wrapper that returns only chunk texts.
+        """
+        detailed_chunks = self.search_chunks_detailed(
+            tenant_id=tenant_id,
+            query_vector=query_vector,
+            top_k=top_k,
+            source_file=source_file
+        )
+        return [chunk["text"] for chunk in detailed_chunks]
     
     def delete_document(self, tenant_id: str, source_file: str):
         """

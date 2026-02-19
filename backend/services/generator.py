@@ -7,6 +7,7 @@ Vextral Answer Generation Service - Dual Model Architecture
 import os
 import time
 import logging
+from typing import Any
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -42,11 +43,39 @@ class GeneratorService:
         
         # Default model reference for logging
         self.model = self.groq_model
+
+    def _build_context(self, context_chunks: list[Any]) -> str:
+        """
+        Build a grounded context block from either plain strings or chunk dicts.
+        """
+        context_blocks: list[str] = []
+
+        for i, chunk in enumerate(context_chunks[:6]):
+            if isinstance(chunk, dict):
+                text = str(chunk.get("text", "")).strip()
+                if not text:
+                    continue
+
+                source_file = chunk.get("source_file", "document")
+                page_number = chunk.get("page_number", 0)
+                score = chunk.get("score")
+                score_label = f"{float(score):.3f}" if isinstance(score, (float, int)) else "n/a"
+                source_label = f"{source_file} page {page_number}" if page_number else str(source_file)
+
+                context_blocks.append(
+                    f"[Source {i+1} | {source_label} | relevance={score_label}]\n{text}"
+                )
+            else:
+                text = str(chunk).strip()
+                if text:
+                    context_blocks.append(f"[Source {i+1}]\n{text}")
+
+        return "\n\n".join(context_blocks)
     
     def generate_answer(
         self, 
         question: str, 
-        context_chunks: list[str], 
+        context_chunks: list[Any], 
         tenant_id: str,
         chat_history: list = None,
         stream: bool = False
@@ -61,26 +90,19 @@ class GeneratorService:
                 # === DOCUMENT RAG MODE → Groq Llama 3.3 70B ===
                 client = self.groq_client
                 model = self.groq_model
+                temperature = 0.1
                 
-                context = "\n\n".join([
-                    f"[Document Chunk {i+1}]\n{chunk}" 
-                    for i, chunk in enumerate(context_chunks[:5])
-                ])
+                context = self._build_context(context_chunks)
                 
-                system_prompt = """You are Vextral AI, an expert document assistant powered by advanced AI.
+                system_prompt = """You are Vextral AI, an expert document assistant.
 
 INSTRUCTIONS:
-1. Use the provided DOCUMENT CONTEXT as your PRIMARY source.
-2. If the document context provides a partial answer, SUPPLEMENT it with your own knowledge to give a complete response.
-3. If the question is related to the document but goes beyond it, combine document information with your broader knowledge.
-4. Format your responses beautifully using Markdown:
-   - Use **bold** for key terms and important points
-   - Use bullet points and numbered lists for clarity
-   - Use headings (##) to organize longer answers
-   - Use tables when comparing data
-   - Use > blockquotes for direct citations from the document
-5. Be thorough, precise, and insightful.
-6. Never say you cannot answer - always provide the best possible response."""
+1. Use DOCUMENT CONTEXT as the primary source of truth.
+2. Do not invent facts, numbers, names, or quotes.
+3. If context is insufficient, explicitly say what is missing.
+4. Cite supporting evidence with [Source N] markers.
+5. Keep the answer concise, clear, and in Markdown.
+6. Prefer accuracy over completeness."""
 
                 user_prompt = f"""DOCUMENT CONTEXT:
 {context}
@@ -88,7 +110,9 @@ INSTRUCTIONS:
 USER QUESTION:
 {question}
 
-Provide a comprehensive, well-formatted answer. Use the document context as your primary source, and supplement with your own knowledge where helpful."""
+Respond with:
+1) A direct answer
+2) Key evidence bullets with [Source N] citations"""
 
                 logger.info(f"⚡ Using Groq Llama 3.3 70B (Document RAG)")
 
@@ -96,6 +120,7 @@ Provide a comprehensive, well-formatted answer. Use the document context as your
                 # === GENERAL AI MODE → Kimi K2.5 ===
                 client = self.kimi_client
                 model = self.kimi_model
+                temperature = 0.3
                 
                 system_prompt = """You are Vextral AI, a friendly and highly intelligent general assistant.
 
@@ -131,7 +156,7 @@ INSTRUCTIONS:
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
-                temperature=0.3,
+                temperature=temperature,
                 max_tokens=1024,
                 stream=stream
             )
