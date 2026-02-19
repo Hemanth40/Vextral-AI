@@ -14,6 +14,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   chunks_used?: number;
+  sources?: string[];
   mode?: string;
   timestamp: Date;
 }
@@ -23,6 +24,13 @@ interface Document {
   filename: string;
   chunk_count: number;
   uploaded_at: string;
+}
+
+interface HistoryItem {
+  id: string;
+  question: string;
+  answer: string;
+  created_at: string;
 }
 
 export default function Chat() {
@@ -65,7 +73,7 @@ export default function Chat() {
       if (!response.ok) throw new Error('Failed to fetch history');
 
       const data = await response.json();
-      const historyMessages: Message[] = (data.history || []).flatMap((item: any) => [
+      const historyMessages: Message[] = (data.history || []).flatMap((item: HistoryItem) => [
         { id: `${item.id}-q`, role: 'user' as const, content: item.question, timestamp: new Date(item.created_at) },
         { id: `${item.id}-a`, role: 'assistant' as const, content: item.answer, timestamp: new Date(item.created_at) },
       ]);
@@ -102,7 +110,7 @@ export default function Chat() {
       const data = await response.json();
       setMessages((prev) => [...prev, {
         id: (Date.now() + 1).toString(), role: 'assistant', content: data.answer,
-        chunks_used: data.chunks_used, mode: data.mode, timestamp: new Date(),
+        chunks_used: data.chunks_used, sources: data.sources || [], mode: data.mode, timestamp: new Date(),
       }]);
     } catch (error) {
       console.error('Error:', error);
@@ -354,7 +362,9 @@ export default function Chat() {
                         {message.chunks_used !== undefined && message.chunks_used > 0 && (
                           <div className="source-line">
                             <span className="source-indicator" />
-                            Sourced from {selectedDoc || 'documents'} · {message.chunks_used} chunks analyzed
+                            {message.sources && message.sources.length > 0
+                              ? `Sources: ${message.sources.slice(0, 3).join(' · ')}`
+                              : `Sourced from ${selectedDoc || 'documents'} · ${message.chunks_used} chunks analyzed`}
                           </div>
                         )}
                       </div>

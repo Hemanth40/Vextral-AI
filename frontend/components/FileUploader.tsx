@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { uploadDocument } from '@/lib/api';
 
 interface FileUploaderProps {
@@ -16,26 +16,42 @@ export default function FileUploader({ tenantId, onUploadSuccess }: FileUploader
     const [success, setSuccess] = useState(false);
     const [currentFile, setCurrentFile] = useState<File | null>(null);
 
-    const handleDragOver = useCallback((e: React.DragEvent) => {
+    const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(true);
-    }, []);
+    };
 
-    const handleDragLeave = useCallback((e: React.DragEvent) => {
+    const handleDragLeave = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
-    }, []);
+    };
 
     const validateFile = (file: File): string | null => {
-        const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
-        const maxSize = 10 * 1024 * 1024; // 10MB
+        const allowedTypes = [
+            'application/pdf',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'text/plain',
+            'text/csv',
+            'text/markdown',
+            'application/json',
+            'image/png',
+            'image/jpeg',
+            'image/jpg',
+            'image/webp',
+        ];
+        const allowedExtensions = ['pdf', 'docx', 'txt', 'csv', 'md', 'json', 'png', 'jpg', 'jpeg', 'webp'];
+        const fileExt = file.name.split('.').pop()?.toLowerCase();
+        const maxSize = 20 * 1024 * 1024; // 20MB
 
-        if (!allowedTypes.includes(file.type)) {
-            return 'Invalid file type. Please upload PDF, PNG, or JPG files.';
+        const fileTypeAllowed = allowedTypes.includes(file.type);
+        const extensionAllowed = fileExt ? allowedExtensions.includes(fileExt) : false;
+
+        if (!fileTypeAllowed && !extensionAllowed) {
+            return 'Invalid file type. Upload PDF, DOCX, TXT, CSV, MD, JSON, PNG, JPG, or WEBP.';
         }
 
         if (file.size > maxSize) {
-            return 'File too large. Maximum size is 10MB.';
+            return 'File too large. Maximum size is 20MB.';
         }
 
         return null;
@@ -74,14 +90,15 @@ export default function FileUploader({ tenantId, onUploadSuccess }: FileUploader
                 setProgress(0);
                 onUploadSuccess();
             }, 2000);
-        } catch (err: any) {
-            setError(err.message || 'Upload failed');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Upload failed';
+            setError(message);
             setUploading(false);
             setProgress(0);
         }
     };
 
-    const handleDrop = useCallback((e: React.DragEvent) => {
+    const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
 
@@ -89,7 +106,7 @@ export default function FileUploader({ tenantId, onUploadSuccess }: FileUploader
         if (files.length > 0) {
             handleUpload(files[0]);
         }
-    }, [tenantId]);
+    };
 
     const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
@@ -115,7 +132,7 @@ export default function FileUploader({ tenantId, onUploadSuccess }: FileUploader
                     type="file"
                     id="file-upload"
                     className="hidden"
-                    accept=".pdf,.png,.jpg,.jpeg"
+                    accept=".pdf,.docx,.txt,.csv,.md,.json,.png,.jpg,.jpeg,.webp"
                     onChange={handleFileInput}
                     disabled={uploading}
                 />
@@ -126,7 +143,7 @@ export default function FileUploader({ tenantId, onUploadSuccess }: FileUploader
                         {uploading ? 'Uploading...' : 'Drop your document here'}
                     </p>
                     <p className="text-sm text-gray-500">
-                        or click to browse (PDF, PNG, JPG - max 10MB)
+                        or click to browse (PDF, DOCX, TXT, CSV, MD, JSON, PNG, JPG, WEBP - max 20MB)
                     </p>
                 </label>
             </div>
