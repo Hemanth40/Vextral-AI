@@ -23,6 +23,7 @@ export default function Documents() {
     const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
     const TENANT_ID = 'demo_user';
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => { fetchDocuments(); }, []);
 
     const fetchDocuments = async () => {

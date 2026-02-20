@@ -428,7 +428,7 @@ export default function Home() {
           <div className="feature-icon green">⚡</div>
           <h3 className="feature-title">Lightning Fast Answers</h3>
           <p className="feature-desc">
-            Responses in 2-5 seconds powered by Groq's custom LPU hardware. Vector search finds relevant content instantly.
+            Responses in 2-5 seconds powered by Groq&apos;s custom LPU hardware. Vector search finds relevant content instantly.
           </p>
         </div>
       </section>

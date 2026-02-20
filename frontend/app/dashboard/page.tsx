@@ -42,7 +42,9 @@ export default function Dashboard() {
         }
     };
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchDocuments();
     }, []);
 

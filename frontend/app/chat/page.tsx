@@ -43,8 +43,10 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { showToast, ToastContainer } = useToast();
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchDocuments(); }, []);
 
+   
   useEffect(() => {
     setMessages([]);
     loadHistory();
