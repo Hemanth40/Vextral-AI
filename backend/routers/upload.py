@@ -45,8 +45,27 @@ async def upload_document(
         )
     
     try:
-        # Step 2: Read file bytes
+        # Step 1.5: Enforce Storage Limits to prevent abuse
+        # 1. Limit per-user documents (Max 5)
+        from services.database import execute_query
+        count_query = "SELECT COUNT(*) FROM documents WHERE tenant_id = %s"
+        doc_count = execute_query(count_query, (tenant_id,), fetch=True)
+        if doc_count and doc_count[0][0] >= 5:
+            raise HTTPException(
+                status_code=403,
+                detail="Storage limit reached. You can only store up to 5 documents. Please delete an old document first."
+            )
+
+        # Step 2: Read file bytes and enforce size limit
         file_bytes = await file.read()
+        MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+        
+        if len(file_bytes) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail="File is too large. Maximum allowed size is 50MB to preserve free tier limits."
+            )
+            
         logger.info(f"✓ Read {len(file_bytes)} bytes from {file.filename}")
         
         # Step 3: Parse document
