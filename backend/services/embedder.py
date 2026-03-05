@@ -20,7 +20,8 @@ class EmbedderService:
         # Use the provided API key for llama-nemotron-embed-vl-1b-v2
         api_key = os.getenv("NVIDIA_API_KEY")
         if not api_key:
-            raise ValueError("NVIDIA_API_KEY environment variable is missing.")
+            print("⚠️ WARNING: NVIDIA_API_KEY environment variable is missing. Embeddings will fail.")
+            api_key = "missing_key"
             
         self.client = OpenAI(
             base_url="https://integrate.api.nvidia.com/v1",
