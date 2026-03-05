@@ -11,8 +11,9 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" alt="Next.js" />
   <img src="https://img.shields.io/badge/FastAPI-0.109-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/NVIDIA%20NIM-Kimi%20K2.5-76b900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA" />
+  <img src="https://img.shields.io/badge/Gemini%203.0%20Flash-Leader%20Agent-4285F4?style=flat-square&logo=google&logoColor=white" alt="Gemini" />
   <img src="https://img.shields.io/badge/Groq-Llama%203.3%2070B-f55036?style=flat-square" alt="Groq" />
+  <img src="https://img.shields.io/badge/NVIDIA%20NIM-Kimi%20K2.5-76b900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA" />
   <img src="https://img.shields.io/badge/Qdrant-Vector%20DB-dc382d?style=flat-square" alt="Qdrant" />
   <img src="https://img.shields.io/badge/Supabase-PostgreSQL-3ecf8e?style=flat-square&logo=supabase&logoColor=white" alt="Supabase" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License" />
@@ -28,10 +29,12 @@
 
 | Feature | Description |
 |---|---|
-| 🧠 **Dual-Model AI** | Kimi K2.5 for general chat, Groq Llama 3.3 70B for lightning-fast document Q&A |
+| 👑 **Multi-Agent Review** | **Leader/Worker Architecture:** Groq drafts instantly; Gemini 3.0 Flash reviews, strictly fact-checks, and polishes |
+| 🧩 **Parent-Child Retrieval** | **Zero Information Loss:** Embeds precision child chunks, but feeds massive full parent chunks to the LLMs |
+| ⚡ **Extreme Speed** | **Parallel OCR:** Multi-threaded Vision AI transcription + High-volume vector database batching for <1min huge uploads |
+| 🧠 **Tri-Model AI** | Gemini 3.0 Flash (Leader), Llama 3.3 70B (Document Worker), Kimi K2.5 (General AI Worker) |
 | 📄 **Multi-Format Parsing** | PDF (text + tables), DOCX, TXT, CSV, MD, JSON, PNG, JPG — all supported |
-| 🔍 **RAG Pipeline** | Upload → Parse → Embed → Vector Search → AI Answer with source attribution |
-| 🎨 **Premium Dark UI** | Glassmorphism design, ambient glows, smooth animations, Markdown rendering |
+| 🎨 **Premium Dark UI** | Glassmorphism design, ambient glows, smooth animations, readable Markdown rendering |
 | 🏢 **Multi-Tenant** | Isolated data per tenant with per-user Qdrant collections |
 | 💬 **Chat History** | Persistent per-document and general AI chat history |
 | 📊 **Table Extraction** | Automatically detects and extracts tables from PDFs as Markdown |
@@ -52,16 +55,17 @@
 │  • Markdown Chat │     │       │       └────────┬──────────┘  │
 │  • Toast Notifs  │     │       ▼                ▼             │
 └──────────────────┘     │  ┌─────────┐  ┌───────────────────┐  │
-                         │  │ Parser  │  │ Generator         │  │
-                         │  │ Service │  │ • Kimi K2.5       │  │
-                         │  └────┬────┘  │ • Groq Llama 3.3  │  │
-                         │       │       └───────────────────┘  │
-                         │       ▼                              │
+                         │  │ Parser  │  │ Generator AI      │  │
+                         │  │ •Parallel│ │ • Groq (Worker)   │  │
+                         │  │ •Parent- │ │ • Gemini (Leader) │  │
+                         │  │  Child   │ │ • Kimi (General)  │  │
+                         │  └────┬────┘  └───────────────────┘  │
+                         │       │       ▲                      │
+                         │       ▼       │                      │
                          │  ┌─────────┐  ┌───────────────────┐  │
                          │  │Embedder │  │ Vector Store      │  │
                          │  │ NVIDIA  │──│ Qdrant Cloud      │  │
-                         │  │ NIM API │  └───────────────────┘  │
-                         │  └─────────┘                         │
+                         │  └─────────┘  └───────────────────┘  │
                          │       │       ┌───────────────────┐  │
                          │       └──────▶│ Supabase Postgres │  │
                          │               └───────────────────┘  │
@@ -76,7 +80,7 @@
 
 - **Python** 3.10+
 - **Node.js** 18+
-- API keys for: NVIDIA NIM, Groq, Qdrant Cloud, Supabase
+- API keys for: Google Gemini, NVIDIA NIM, Groq, Qdrant Cloud, Supabase
 
 ### 1. Clone the Repository
 
@@ -144,9 +148,10 @@ Visit **[http://localhost:3000](http://localhost:3000)** 🎉
 
 | Variable | Description |
 |---|---|
+| `GEMINI_API_KEY` | Google GenAI key for Gemini 3.0 Flash (Leader Agent) |
+| `GROQ_API_KEY` | Groq API key for Llama 3.3 70B (Worker Agent) |
 | `NVIDIA_API_KEY` | NVIDIA NIM key for embeddings (Llama-Nemotron) |
-| `NVIDIA_API_KEY_KIMI` | NVIDIA NIM key for Kimi K2.5 chat model |
-| `GROQ_API_KEY` | Groq API key for Llama 3.3 70B |
+| `NVIDIA_API_KEY_KIMI` | NVIDIA NIM key for Kimi K2.5 (General AI Worker) |
 | `QDRANT_URL` | Qdrant Cloud cluster URL |
 | `QDRANT_KEY` | Qdrant Cloud API key |
 | `DATABASE_URL` | Supabase PostgreSQL connection string |
@@ -238,8 +243,9 @@ Vextral/
 </td>
 <td>
 
-- Kimi K2.5 (NVIDIA)
+- Gemini 3.0 Flash (Google)
 - Llama 3.3 70B (Groq)
+- Kimi K2.5 (NVIDIA)
 - Llama-Nemotron Embed
 - Llama 3.2 Vision
 

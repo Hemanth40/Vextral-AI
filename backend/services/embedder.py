@@ -18,8 +18,10 @@ class EmbedderService:
     def __init__(self):
         """Initialize the NVIDIA NIM client"""
         # Use the provided API key for llama-nemotron-embed-vl-1b-v2
-        api_key = os.getenv("NVIDIA_API_KEY", "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")
-        
+        api_key = os.getenv("NVIDIA_API_KEY")
+        if not api_key:
+            raise ValueError("NVIDIA_API_KEY environment variable is missing.")
+            
         self.client = OpenAI(
             base_url="https://integrate.api.nvidia.com/v1",
             api_key=api_key

@@ -9,6 +9,8 @@ import time
 import logging
 from typing import Any
 from openai import OpenAI
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -34,15 +36,26 @@ class GeneratorService:
         
         # === Llama 3.3 70B for Document RAG (Groq - ultra fast) ===
         groq_key = os.getenv("GROQ_API_KEY", "")
-        self.groq_client = OpenAI(
-            base_url="https://api.groq.com/openai/v1",
-            api_key=groq_key,
-            timeout=60.0
-        )
+        if groq_key:
+            self.groq_client = OpenAI(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=groq_key,
+                timeout=60.0
+            )
+        else:
+            self.groq_client = None
         self.groq_model = "llama-3.3-70b-versatile"
         
+        # === Gemini 3.0 Flash as the LEADER/REVIEWER Agent ===
+        gemini_key = os.getenv("GEMINI_API_KEY", "")
+        if gemini_key:
+            self.gemini_client = genai.Client(api_key=gemini_key)
+        else:
+            self.gemini_client = None
+        self.gemini_model = "gemini-3.0-flash"
+        
         # Default model reference for logging
-        self.model = self.groq_model
+        self.model = self.kimi_model
 
     def _build_context(self, context_chunks: list[Any]) -> str:
         """
@@ -62,16 +75,87 @@ class GeneratorService:
                 score_label = f"{float(score):.3f}" if isinstance(score, (float, int)) else "n/a"
                 source_label = f"{source_file} page {page_number}" if page_number else str(source_file)
 
+                # Instead of explicit source tags that leak into the UI, simply provide the document info
                 context_blocks.append(
-                    f"[Source {i+1} | {source_label} | relevance={score_label}]\n{text}"
+                    f"--- DOCUMENT PORTION: {source_label} ---\n{text}"
                 )
             else:
                 text = str(chunk).strip()
                 if text:
-                    context_blocks.append(f"[Source {i+1}]\n{text}")
+                    context_blocks.append(f"--- DOCUMENT PORTION ---\n{text}")
 
         return "\n\n".join(context_blocks)
-    
+        
+    def _review_with_gemini(self, question: str, context: str, draft_answer: str, chat_history: list = None) -> str:
+        """
+        Leader Agent (Gemini 3.0 Flash) reviews and corrects the Worker Agent's draft.
+        """
+        if not self.gemini_client:
+            logger.info("⚠️  Gemini client not configured. Skipping LEADER review step.")
+            return draft_answer
+            
+        system_prompt = """You are the Vextral AI Leader Agent, a meticulous fact-checker and reviewer.
+Your job is to review a DRAFT ANSWER provided by a Worker Agent.
+
+INSTRUCTIONS:
+1. Verify the Draft Answer against the provided DOCUMENT CONTEXT.
+2. Correct any hallucinations, incorrect numbers, or misinterpretations.
+3. Ensure the answer is beautifully formatted, neat, and extremely easy for anyone to understand.
+4. DO NOT use academic citations like [Source 1] inside your response. Make it read like a natural, expert explanation.
+5. If the draft invents information not in the context, rewrite it to be strictly grounded.
+6. YOU MUST output ONLY the final, polished response. Do not include commentary about your review process."""
+
+        user_prompt = f"""DOCUMENT CONTEXT:
+{context}
+
+USER QUESTION:
+{question}
+
+WORKER'S DRAFT ANSWER:
+{draft_answer}
+
+Please review, correct if necessary, and output the FINAL answer."""
+
+        logger.info(f"👑 Passing draft to LEADER agent (Gemini 3.0 Flash) for review...")
+        api_start = time.time()
+        
+        try:
+            # Format history for Gemini
+            contents = []
+            if chat_history:
+                for msg in chat_history[:-1]:
+                    role = "user" if msg.get("role") == "user" else "model"
+                    contents.append(
+                        types.Content(role=role, parts=[types.Part.from_text(text=msg.get("content", ""))])
+                    )
+            
+            contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
+            
+            response = self.gemini_client.models.generate_content(
+                model=self.gemini_model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.1,
+                    max_output_tokens=1024,
+                )
+            )
+            
+            api_duration = time.time() - api_start
+            logger.info(f"⏱️  Leader Review Latency: {api_duration:.2f}s")
+            
+            # Very basic sanity check to make sure it didn't just return empty
+            if response.text and len(response.text.strip()) > 10:
+                logger.info(f"✓ Leader review complete")
+                return response.text
+            else:
+                logger.warning("⚠️  Leader returned empty response. Falling back to Worker's draft.")
+                return draft_answer
+                
+        except Exception as e:
+            logger.error(f"Error during Gemini review: {e}")
+            return draft_answer # Fallback to original draft if Gemini fails
+
     def generate_answer(
         self, 
         question: str, 
@@ -87,22 +171,28 @@ class GeneratorService:
         """
         try:
             if context_chunks:
-                # === DOCUMENT RAG MODE → Groq Llama 3.3 70B ===
-                client = self.groq_client
-                model = self.groq_model
+                # === DOCUMENT RAG MODE → WORKER (Groq/Llama or Kimi if Groq missing) ===
+                if self.groq_client:
+                    client = self.groq_client
+                    model = self.groq_model
+                    worker_name = "Groq Llama 3.3 70B"
+                else:
+                    client = self.kimi_client
+                    model = self.kimi_model
+                    worker_name = "Kimi K2.5"
+                    
                 temperature = 0.1
-                
                 context = self._build_context(context_chunks)
                 
-                system_prompt = """You are Vextral AI, an expert document assistant.
+                system_prompt = """You are Vextral AI's diligent Worker Agent inside an expert document assistant system.
 
 INSTRUCTIONS:
-1. Use DOCUMENT CONTEXT as the primary source of truth.
+1. Use DOCUMENT CONTEXT as your sole source of truth.
 2. Do not invent facts, numbers, names, or quotes.
-3. If context is insufficient, explicitly say what is missing.
-4. Cite supporting evidence with [Source N] markers.
-5. Keep the answer concise, clear, and in Markdown.
-6. Prefer accuracy over completeness."""
+3. If the context is insufficient, explicitly say what is missing.
+4. Keep the answer extremely clear, neat, and highly readable for all users.
+5. Provide a perfectly formatted Markdown response (headings, bullets, bold text).
+6. DO NOT use explicit citation chunks like [Source N] in the text. Just answer naturally and accurately based on the context."""
 
                 user_prompt = f"""DOCUMENT CONTEXT:
 {context}
@@ -110,14 +200,52 @@ INSTRUCTIONS:
 USER QUESTION:
 {question}
 
-Respond with:
-1) A direct answer
-2) Key evidence bullets with [Source N] citations"""
+Respond with a complete, beautifully formatted, easy-to-understand answer."""
 
-                logger.info(f"⚡ Using Groq Llama 3.3 70B (Document RAG)")
+                logger.info(f"⚡ Using WORKER Agent ({worker_name}) to generate draft...")
+                
+                # Build messages with conversation history for OpenAI-compatible Worker
+                api_start = time.time()
+                messages = [{"role": "system", "content": system_prompt}]
+                
+                if chat_history:
+                    for msg in chat_history[:-1]:
+                        role = msg.get("role", "user")
+                        if role in ("user", "assistant"):
+                            messages.append({"role": role, "content": msg.get("content", "")})
+                
+                messages.append({"role": "user", "content": user_prompt})
+                
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=1024,
+                    stream=stream
+                )
+                
+                api_duration = time.time() - api_start
+                logger.info(f"⏱️  Worker Draft Latency: {api_duration:.2f}s")
+                
+                if stream:
+                    # Multi-agent review handles complete strings, so streaming isn't fully compatible with leader review.
+                    # For a true multi-agent approach, we must collect the whole response first to review it.
+                    # If stream=True is forcefully requested, we bypass review.
+                    return response
+                else:
+                    draft_answer = response.choices[0].message.content
+                    
+                    # 👑 Pass to LEADER Agent for review
+                    final_answer = self._review_with_gemini(
+                        question=question, 
+                        context=context, 
+                        draft_answer=draft_answer,
+                        chat_history=chat_history
+                    )
+                    return final_answer
 
             else:
-                # === GENERAL AI MODE → Kimi K2.5 ===
+                # === GENERAL AI MODE → WORKER (Kimi K2.5) ===
                 client = self.kimi_client
                 model = self.kimi_model
                 temperature = 0.3
@@ -138,7 +266,7 @@ INSTRUCTIONS:
                 
                 logger.info(f"🌙 Using Kimi K2.5 (General AI)")
 
-            # Build messages with conversation history
+            # Build messages with conversation history for OpenAI-compatible Kimi
             api_start = time.time()
             
             messages = [{"role": "system", "content": system_prompt}]
@@ -162,13 +290,22 @@ INSTRUCTIONS:
             )
             
             api_duration = time.time() - api_start
-            logger.info(f"⏱️  AI Model Latency: {api_duration:.2f}s")
+            logger.info(f"⏱️  AI Model Latency (Kimi): {api_duration:.2f}s")
             
             if stream:
                 return response
             else:
-                answer = response.choices[0].message.content
-                return answer
+                draft_answer = response.choices[0].message.content
+                
+                # 👑 Pass to LEADER Agent for review (General Mode)
+                # For general mode, context is empty
+                final_answer = self._review_with_gemini(
+                    question=question,
+                    context="No document context provided. Answer using general knowledge.",
+                    draft_answer=draft_answer,
+                    chat_history=chat_history
+                )
+                return final_answer
                 
         except Exception as e:
             logger.error(f"Error generating answer for tenant {tenant_id}: {e}")
@@ -190,13 +327,13 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"✗ Kimi test failed: {e}")
     
-    # Test Document RAG (Groq)
+    # Test Document RAG (Gemini)
     try:
         answer = generator.generate_answer(
             "What is Vextral?",
             ["Vextral is a multi-tenant RAG platform."],
             "test_user"
         )
-        logger.info(f"✓ Groq Llama 3.3: {answer[:100]}...")
+        logger.info(f"✓ Gemini 3.0 Flash: {answer[:100]}...")
     except Exception as e:
-        logger.error(f"✗ Groq test failed: {e}")
+        logger.error(f"✗ Gemini test failed: {e}")

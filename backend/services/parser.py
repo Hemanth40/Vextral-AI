@@ -13,7 +13,8 @@ import re
 import base64
 import fitz  # PyMuPDF
 from PIL import Image
-from typing import List, Dict
+from typing import List, Dict, Any, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -25,9 +26,12 @@ class ParserService:
     
     def __init__(self):
         """Initialize the parser service"""
-        # Smaller chunks improve retrieval precision for document Q&A.
-        self.max_chunk_words = 320
+        # Parent chunk size for maximum context in the LLM
+        self.max_parent_words = 1200
+        # Child chunk size for high-precision vector search
+        self.max_child_words = 300
         self.min_chunk_words = 25
+        
         self.ocr_min_text_chars = int(os.getenv("PDF_OCR_MIN_TEXT_CHARS", "30"))
         self.table_min_text_chars = int(os.getenv("PDF_TABLE_MIN_TEXT_CHARS", "180"))
         self.ocr_scale = float(os.getenv("PDF_OCR_SCALE", "1.7"))
@@ -40,14 +44,37 @@ class ParserService:
         )
         self.vision_model = "meta/llama-3.2-11b-vision-instruct"
     
-    def chunk_text(self, text: str, max_words: int = 500) -> List[str]:
+    def chunk_text_hierarchical(self, text: str) -> List[Dict[str, str]]:
+        """
+        Split text into Parent and Child chunks for Auto-Merging Retrieval.
+        Returns a list of dicts containing 'parent_text' and 'child_text'.
+        """
+        text = self._clean_text(text)
+        if not text:
+            return []
+
+        parents = self.chunk_text(text, self.max_parent_words)
+        
+        hierarchical_chunks = []
+        for parent_text in parents:
+            # Overlap slightly less on children since they search the parent
+            children = self.chunk_text(parent_text, self.max_child_words, overlap_ratio=0.15)
+            for child_text in children:
+                hierarchical_chunks.append({
+                    "parent_text": parent_text,
+                    "child_text": child_text
+                })
+        
+        return hierarchical_chunks
+
+    def chunk_text(self, text: str, max_words: int = 500, overlap_ratio: float = 0.25) -> List[str]:
         """Split text into paragraph-aware chunks with overlap for better retrieval precision."""
         text = self._clean_text(text)
         if not text:
             return []
 
         max_words = max(60, max_words)
-        overlap_words = min(40, max_words // 4)
+        overlap_words = min(int(max_words * overlap_ratio), max_words // 4)
         segment_step = max(max_words - overlap_words, 1)
 
         paragraphs = [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
@@ -170,7 +197,7 @@ class ParserService:
             raise ValueError(f"Unsupported file type: {file_ext}. Supported: pdf, docx, txt, csv, md, json, png, jpg, jpeg, webp")
     
     def _parse_pdf(self, file_bytes: bytes, filename: str) -> List[Dict]:
-        """Enhanced PDF extraction with structured text + tables"""
+        """Enhanced PDF extraction with parallel OCR and hierarchical chunking"""
         chunks = []
         chunk_index = 0
         
@@ -180,11 +207,15 @@ class ParserService:
             
             print(f"⚙️ Enhanced PDF Parse: {filename} ({total_pages} pages)")
             
+            # Extract standard text and tables first
+            pages_text = {}
+            pages_needing_ocr = []
+            
             for page_num in range(total_pages):
                 page = pdf_document[page_num]
                 page_text_parts = []
                 
-                # 1. Extract structured text blocks (preserves reading order)
+                # 1. Extract structured text blocks
                 blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)["blocks"]
                 
                 for block in blocks:
@@ -195,7 +226,6 @@ class ParserService:
                             for span in line["spans"]:
                                 text = span["text"].strip()
                                 if text:
-                                    # Detect headings by font size
                                     font_size = span["size"]
                                     is_bold = "bold" in span["font"].lower() or "Bold" in span["font"]
                                     
@@ -216,7 +246,7 @@ class ParserService:
 
                 base_page_text = "\n\n".join(page_text_parts)
 
-                # 2. Extract tables only when there's enough text context to justify extra cost.
+                # 2. Extract tables only if text exists
                 if len(base_page_text.strip()) >= self.table_min_text_chars:
                     try:
                         tables = page.find_tables()
@@ -227,48 +257,59 @@ class ParserService:
                                     md_table = self._table_to_markdown(table_data)
                                     if md_table:
                                         page_text_parts.append(f"\n{md_table}\n")
-                                        print(f"   📊 Found table on page {page_num + 1}")
+                                        # print(f"   📊 Found table on page {page_num + 1}")
                     except Exception:
-                        # Table extraction is best-effort and version-dependent.
                         pass
 
-                # Combine all parts for this page
                 full_page_text = "\n\n".join(page_text_parts)
-
-                # OCR fallback for scanned/image-based PDF pages.
+                
                 if not full_page_text or len(full_page_text.strip()) < self.ocr_min_text_chars:
-                    has_images = len(page.get_images(full=True)) > 0
-                    if has_images:
-                        print(f"   ⚠️ Low text detected on page {page_num + 1}, trying OCR fallback...")
-                        try:
-                            scale = min(max(self.ocr_scale, 1.2), 2.4)
-                            pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
-
-                            # JPEG payload is much smaller than PNG and speeds up Vision API calls.
-                            image = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
-                            jpeg_buffer = io.BytesIO()
-                            image.save(jpeg_buffer, format="JPEG", quality=80, optimize=True)
-                            page_image_base64 = base64.b64encode(jpeg_buffer.getvalue()).decode("utf-8")
-
-                            ocr_text = self._extract_text_with_ai(page_image_base64)
-                            if ocr_text and len(ocr_text.strip()) >= self.ocr_min_text_chars:
-                                full_page_text = ocr_text
-                                print(f"   ✓ OCR fallback recovered text on page {page_num + 1}")
-                        except Exception as ocr_error:
-                            print(f"   ⚠️ OCR fallback failed on page {page_num + 1}: {ocr_error}")
+                    if len(page.get_images(full=True)) > 0:
+                        pages_needing_ocr.append((page_num, page))
                     else:
-                        print(f"   ⚠️ Low text on page {page_num + 1}, skipped OCR (no embedded image)")
+                        pages_text[page_num] = full_page_text
+                else:
+                    pages_text[page_num] = full_page_text
 
+            # 3. Parallel OCR Processing for missing text using Vision API
+            if pages_needing_ocr:
+                print(f"   ⚠️ Running parallel OCR on {len(pages_needing_ocr)} pages...")
+                
+                def process_ocr_page(page_num, page):
+                    try:
+                        scale = min(max(self.ocr_scale, 1.2), 2.0)
+                        pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+                        image = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+                        jpeg_buffer = io.BytesIO()
+                        image.save(jpeg_buffer, format="JPEG", quality=75, optimize=True)
+                        page_image_base64 = base64.b64encode(jpeg_buffer.getvalue()).decode("utf-8")
+                        ocr_text = self._extract_text_with_ai(page_image_base64)
+                        return page_num, ocr_text if ocr_text else ""
+                    except Exception as e:
+                        print(f"   ⚠️ OCR fallback failed on page {page_num + 1}: {e}")
+                        return page_num, ""
+
+                # Target blazing fast speed by doing max parallel workers allowed by free APIs (usually 5-10)
+                max_workers = min(10, len(pages_needing_ocr))
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = {executor.submit(process_ocr_page, p_num, p): p_num for p_num, p in pages_needing_ocr}
+                    for future in as_completed(futures):
+                        p_num, text = future.result()
+                        pages_text[p_num] = text
+
+            # 4. Perform Hierarchical Chunking
+            for page_num in sorted(pages_text.keys()):
+                full_page_text = pages_text[page_num]
                 if not full_page_text or len(full_page_text.strip()) < 10:
-                    print(f"   ⚠️ No usable text on page {page_num + 1}")
                     continue
                 
-                # Chunk the page text
-                text_chunks = self.chunk_text(full_page_text, self.max_chunk_words)
+                hierarchical_segments = self.chunk_text_hierarchical(full_page_text)
                 
-                for text_chunk in text_chunks:
+                for segment in hierarchical_segments:
                     chunks.append({
-                        "text": text_chunk,
+                        "text": segment["child_text"],  # Target text for embedding
+                        "parent_text": segment["parent_text"],  # Full context for LLM
+                        "parent_id": f"parent_{page_num}_{hash(segment['parent_text'])}",
                         "image_base64": None,
                         "page_number": page_num + 1,
                         "chunk_index": chunk_index,
@@ -277,10 +318,8 @@ class ParserService:
                     })
                     chunk_index += 1
                 
-                print(f"   ✓ Page {page_num + 1}/{total_pages} ({len(text_chunks)} chunks)")
-            
             pdf_document.close()
-            print(f"✓ Parsed PDF: {len(chunks)} chunks from {filename}")
+            print(f"✓ Parsed PDF Hierarchically: {len(chunks)} chunks from {filename}")
             return chunks
             
         except Exception as e:
@@ -348,11 +387,13 @@ class ParserService:
                     all_text_parts.append(f"\n{md_table}\n")
             
             full_text = "\n\n".join(all_text_parts)
-            text_chunks = self.chunk_text(full_text, self.max_chunk_words)
+            hierarchical_segments = self.chunk_text_hierarchical(full_text)
             
-            for text_chunk in text_chunks:
+            for segment in hierarchical_segments:
                 chunks.append({
-                    "text": text_chunk,
+                    "text": segment["child_text"],
+                    "parent_text": segment["parent_text"],
+                    "parent_id": f"parent_docx_{hash(segment['parent_text'])}",
                     "image_base64": None,
                     "page_number": 1,
                     "chunk_index": chunk_index,
@@ -361,7 +402,7 @@ class ParserService:
                 })
                 chunk_index += 1
             
-            print(f"✓ Parsed DOCX: {len(chunks)} chunks from {filename}")
+            print(f"✓ Parsed DOCX: {len(chunks)} hierarchical chunks from {filename}")
             return chunks
             
         except Exception as e:
@@ -382,11 +423,13 @@ class ParserService:
             
             print(f"⚙️ Parse Text: {filename}")
             
-            text_chunks = self.chunk_text(text, self.max_chunk_words)
+            hierarchical_segments = self.chunk_text_hierarchical(text)
             
-            for text_chunk in text_chunks:
+            for segment in hierarchical_segments:
                 chunks.append({
-                    "text": text_chunk,
+                    "text": segment["child_text"],
+                    "parent_text": segment["parent_text"],
+                    "parent_id": f"parent_txt_{hash(segment['parent_text'])}",
                     "image_base64": None,
                     "page_number": 1,
                     "chunk_index": chunk_index,
@@ -395,7 +438,7 @@ class ParserService:
                 })
                 chunk_index += 1
             
-            print(f"✓ Parsed Text: {len(chunks)} chunks from {filename}")
+            print(f"✓ Parsed Text: {len(chunks)} hierarchical chunks from {filename}")
             return chunks
             
         except Exception as e:
@@ -437,8 +480,8 @@ parser = ParserService()
 if __name__ == "__main__":
     print("Testing Vextral Enhanced Parser...")
     
-    test_text = "This is a test sentence. " * 100
-    chunks = parser.chunk_text(test_text, max_words=50)
-    print(f"✓ Text chunking: {len(chunks)} chunks")
+    test_text = "This is a test sentence. " * 300
+    chunks = parser.chunk_text_hierarchical(test_text)
+    print(f"✓ Hierarchical chunking: {len(chunks)} children linked to parents")
     print(f"✓ Supported formats: PDF, DOCX, TXT, CSV, MD, JSON, PNG, JPG, JPEG, WEBP")
     print("\n✓ ENHANCED PARSER READY")

@@ -83,6 +83,8 @@ class VectorStoreService:
                     vector=chunk["vector"],
                     payload={
                         "text": chunk["text"],
+                        "parent_text": chunk.get("parent_text"),
+                        "parent_id": chunk.get("parent_id"),
                         "source_file": chunk["source_file"],
                         "page_number": chunk.get("page_number", 0),
                         "chunk_type": chunk.get("chunk_type", "text"),
@@ -91,8 +93,8 @@ class VectorStoreService:
                 )
                 points.append(point)
             
-            # Batch upsert in chunks of 10 to avoid timeout
-            batch_size = 10
+            # Batch upsert in chunks to avoid timeout while maximizing throughput
+            batch_size = 150
             total_batches = (len(points) + batch_size - 1) // batch_size
             
             for i in range(0, len(points), batch_size):
@@ -173,6 +175,8 @@ class VectorStoreService:
 
                 chunks.append({
                     "text": text,
+                    "parent_text": payload.get("parent_text"),
+                    "parent_id": payload.get("parent_id"),
                     "score": float(result.score) if result.score is not None else 0.0,
                     "source_file": payload.get("source_file", source_file),
                     "page_number": payload.get("page_number", 0),

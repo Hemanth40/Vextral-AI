@@ -158,11 +158,33 @@ async def ask_question(request: ChatRequest):
                 "mode": "document"
             }
 
-        # Generate answer
-        logger.info("⚙️  Generating grounded answer...")
+        # Extract unique parent context blocks for maximum LLM context
+        context_blocks = []
+        seen_parents = set()
+        
+        for chunk in relevant_chunks:
+            # If parent_text exists (new documents), use it. Otherwise fallback to chunk text.
+            context_text = chunk.get("parent_text") or chunk.get("text", "")
+            parent_id = chunk.get("parent_id")
+            
+            # Deduplicate parents so we don't pass the same massive chunk twice
+            if parent_id and parent_id in seen_parents:
+                continue
+            if parent_id:
+                seen_parents.add(parent_id)
+                
+            # Keep score and metadata to trick the generator into citing it correctly
+            context_blocks.append({
+                "text": context_text,
+                "score": chunk.get("score"),
+                "source_file": chunk.get("source_file"),
+                "page_number": chunk.get("page_number")
+            })
+            
+        logger.info(f"⚙️  Generating grounded answer from {len(context_blocks)} large parent blocks...")
         answer = generator.generate_answer(
             request.question,
-            relevant_chunks,
+            context_blocks,
             request.tenant_id,
             chat_history=request.chat_history
         )
