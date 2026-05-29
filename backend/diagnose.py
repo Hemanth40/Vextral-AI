@@ -180,8 +180,23 @@ def test_upstash_redis():
     except Exception as e:
         print(f"[ERROR] Upstash Redis Connection Failed: {e}")
 
+def test_qdrant_cloud():
+    print("\n--- Testing Qdrant Cloud ---")
+    url = os.getenv("QDRANT_URL")
+    key = os.getenv("QDRANT_KEY")
+    if not url or not key:
+        print("[WARNING] Qdrant Cloud URL or Key missing in environment variables.")
+        return
+    try:
+        from qdrant_client import QdrantClient
+        client = QdrantClient(url=url, api_key=key, timeout=10)
+        collections = client.get_collections().collections
+        print(f"[OK] Qdrant Cloud verified successfully. Connected. Found {len(collections)} collections.")
+    except Exception as e:
+        print(f"[ERROR] Qdrant Cloud Connection Failed: {e}")
+
 if __name__ == "__main__":
-    for test in [test_sqlite_db, test_lancedb, test_google_studio_gemini, test_google_studio_gemma, test_groq, test_upstash_redis]:
+    for test in [test_sqlite_db, test_lancedb, test_google_studio_gemini, test_google_studio_gemma, test_groq, test_upstash_redis, test_qdrant_cloud]:
         try:
             test()
         except Exception as ex:
