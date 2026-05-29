@@ -64,3 +64,11 @@ Desktop.ini
 .cache/
 coverage/
 .nyc_output/
+
+# ========================
+# LOCAL DATABASES & CACHES
+# ========================
+backend/vextral.db
+backend/data/
+backend/diag_output.txt
+backend/diag_output_utf8.txt

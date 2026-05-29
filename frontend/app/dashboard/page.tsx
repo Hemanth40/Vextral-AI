@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import FileUploader from '@/components/FileUploader';
 
-const TENANT_ID = 'demo_user'; // Hardcoded for MVP
 
 interface Document {
     id: string;
@@ -16,10 +15,21 @@ interface Document {
 export default function Dashboard() {
     const [documents, setDocuments] = useState<Document[]>([]);
     const [loading, setLoading] = useState(true);
+    const [tenantId, setTenantId] = useState<string | null>(null);
+
+    useEffect(() => {
+        let id = localStorage.getItem('vextral_tenant_id');
+        if (!id) {
+            id = 'user_' + Math.random().toString(36).substring(2, 11);
+            localStorage.setItem('vextral_tenant_id', id);
+        }
+        setTenantId(id);
+    }, []);
 
     const fetchDocuments = async () => {
+        if (!tenantId) return;
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/upload/list/${TENANT_ID}`);
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/upload/list/${tenantId}`);
 
             if (response.ok) {
                 const data = await response.json();
@@ -44,9 +54,8 @@ export default function Dashboard() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        fetchDocuments();
-    }, []);
+        if (tenantId) fetchDocuments();
+    }, [tenantId]);
 
     const handleUploadSuccess = () => {
         // Refresh document list
@@ -54,10 +63,11 @@ export default function Dashboard() {
     };
 
     const handleDelete = async (filename: string) => {
+        if (!tenantId) return;
         if (!confirm(`Delete ${filename}?`)) return;
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/upload/document/${filename}?tenant_id=${TENANT_ID}`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/upload/document/${filename}?tenant_id=${tenantId}`, {
                 method: 'DELETE',
             });
 
@@ -107,7 +117,11 @@ export default function Dashboard() {
                     {/* Upload Section */}
                     <div>
                         <h2 className="text-2xl font-bold text-gray-800 mb-4">Upload Documents</h2>
-                        <FileUploader tenantId={TENANT_ID} onUploadSuccess={handleUploadSuccess} />
+                        {tenantId ? (
+                            <FileUploader tenantId={tenantId} onUploadSuccess={handleUploadSuccess} />
+                        ) : (
+                            <div className="text-gray-500">Initializing session...</div>
+                        )}
                     </div>
 
                     {/* Documents List */}

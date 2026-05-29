@@ -23,14 +23,26 @@ export default function Documents() {
     const { showToast, ToastContainer } = useToast();
 
     const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-    const TENANT_ID = 'demo_user';
+    const [tenantId, setTenantId] = useState<string | null>(null);
+
+    useEffect(() => {
+        let id = localStorage.getItem('vextral_tenant_id');
+        if (!id) {
+            id = 'user_' + Math.random().toString(36).substring(2, 11);
+            localStorage.setItem('vextral_tenant_id', id);
+        }
+        setTenantId(id);
+    }, []);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    useEffect(() => { fetchDocuments(); }, []);
+    useEffect(() => {
+        if (tenantId) fetchDocuments();
+    }, [tenantId]);
 
     const fetchDocuments = async () => {
+        if (!tenantId) return;
         try {
-            const response = await fetch(`${BACKEND_URL}/api/upload/list/${TENANT_ID}`);
+            const response = await fetch(`${BACKEND_URL}/api/upload/list/${tenantId}`);
             const data = await response.json();
             setDocuments(data.documents || []);
         } catch (error) {
@@ -42,12 +54,12 @@ export default function Documents() {
     };
 
     const handleUpload = async (file: File) => {
-        if (!file) return;
+        if (!file || !tenantId) return;
         setUploading(true);
         setUploadProgress(`Uploading ${file.name}...`);
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('tenant_id', TENANT_ID);
+        formData.append('tenant_id', tenantId);
         try {
             setUploadProgress(`Processing ${file.name}...`);
             const response = await fetch(`${BACKEND_URL}/api/upload/document`, {
@@ -84,10 +96,11 @@ export default function Documents() {
     };
 
     const handleDelete = async (filename: string) => {
+        if (!tenantId) return;
         if (!confirm(`Delete "${filename}"?`)) return;
         try {
             const response = await fetch(
-                `${BACKEND_URL}/api/upload/document/${encodeURIComponent(filename)}?tenant_id=${TENANT_ID}`,
+                `${BACKEND_URL}/api/upload/document/${encodeURIComponent(filename)}?tenant_id=${tenantId}`,
                 { method: 'DELETE' }
             );
             if (response.ok) {

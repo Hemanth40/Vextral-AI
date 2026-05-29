@@ -6,7 +6,6 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useToast } from '@/components/ui/use-toast';
 
-const TENANT_ID = 'demo_user';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 interface Message {
@@ -42,23 +41,38 @@ export default function Chat() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>('gemini');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { showToast, ToastContainer } = useToast();
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchDocuments(); }, []);
-
+  const [tenantId, setTenantId] = useState<string | null>(null);
 
   useEffect(() => {
-    setMessages([]);
-    loadHistory();
-  }, [selectedDoc]);
+    let id = localStorage.getItem('vextral_tenant_id');
+    if (!id) {
+      id = 'user_' + Math.random().toString(36).substring(2, 11);
+      localStorage.setItem('vextral_tenant_id', id);
+    }
+    setTenantId(id);
+  }, []);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (tenantId) fetchDocuments();
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (tenantId) {
+      setMessages([]);
+      loadHistory();
+    }
+  }, [selectedDoc, tenantId]);
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const fetchDocuments = async () => {
+    if (!tenantId) return;
     try {
-      const response = await fetch(`${BACKEND_URL}/api/upload/list/${TENANT_ID}`);
+      const response = await fetch(`${BACKEND_URL}/api/upload/list/${tenantId}`);
       const data = await response.json();
       setDocuments(data.documents || []);
     } catch (error) {
@@ -68,9 +82,10 @@ export default function Chat() {
   };
 
   const loadHistory = async () => {
+    if (!tenantId) return;
     setHistoryLoading(true);
     try {
-      let url = `${BACKEND_URL}/api/chat/history/${TENANT_ID}?limit=20`;
+      let url = `${BACKEND_URL}/api/chat/history/${tenantId}?limit=20`;
       if (selectedDoc) url += `&source_file=${encodeURIComponent(selectedDoc)}`;
 
       const response = await fetch(url);
@@ -106,7 +121,7 @@ export default function Chat() {
 
       const response = await fetch(`${BACKEND_URL}/api/chat/ask`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: input, tenant_id: TENANT_ID, source_file: selectedDoc, chat_history: recentHistory }),
+        body: JSON.stringify({ question: input, tenant_id: tenantId, source_file: selectedDoc, chat_history: recentHistory, model: selectedModel }),
       });
 
       if (!response.ok) throw new Error('Failed to get answer');
@@ -124,9 +139,10 @@ export default function Chat() {
   };
 
   const handleClearHistory = async () => {
+    if (!tenantId) return;
     if (!confirm('Clear chat history?')) return;
     try {
-      let url = `${BACKEND_URL}/api/chat/history/${TENANT_ID}`;
+      let url = `${BACKEND_URL}/api/chat/history/${tenantId}`;
       if (selectedDoc) url += `?source_file=${encodeURIComponent(selectedDoc)}`;
 
       const response = await fetch(url, { method: 'DELETE' });
@@ -169,21 +185,36 @@ export default function Chat() {
       {/* Selector */}
       <div className="selector-bar">
         <div className="selector-inner">
-          <span className="selector-label">Chat with</span>
-          <select
-            value={selectedDoc || '__general__'}
-            onChange={(e) => setSelectedDoc(e.target.value === '__general__' ? null : e.target.value)}
-            className="selector-select"
-          >
-            <option value="__general__">🤖 General AI Chat (Kimi K2.5)</option>
-            {documents.length > 0 && (
-              <optgroup label="📂 Your Documents">
-                {documents.map((doc) => (
-                  <option key={doc.id} value={doc.filename}>📄 {doc.filename}</option>
-                ))}
-              </optgroup>
-            )}
-          </select>
+          <div className="selector-group">
+            <span className="selector-label">Chat with</span>
+            <select
+              value={selectedDoc || '__general__'}
+              onChange={(e) => setSelectedDoc(e.target.value === '__general__' ? null : e.target.value)}
+              className="selector-select"
+            >
+              <option value="__general__">🤖 General AI Chat</option>
+              {documents.length > 0 && (
+                <optgroup label="📂 Your Documents">
+                  {documents.map((doc) => (
+                    <option key={doc.id} value={doc.filename}>📄 {doc.filename}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+
+          <div className="selector-group">
+            <span className="selector-label">AI Model</span>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="selector-select model-select"
+            >
+              <option value="gemini">👑 Gemini 3.5 (Primary)</option>
+              <option value="gemma">🤖 Gemma 4 (Google Studio)</option>
+            </select>
+          </div>
+
           <span className={`mode-pill ${selectedDoc ? 'rag' : 'ai'}`}>
             {selectedDoc ? '⚡ RAG Mode' : '🌙 AI Mode'}
           </span>

@@ -33,6 +33,7 @@ class ChatRequest(BaseModel):
     tenant_id: str
     source_file: Optional[str] = None  # None = general AI, filename = document chat
     chat_history: list = Field(default_factory=list)
+    model: Optional[str] = "gemini"
 
 
 def _tokenize(text: str) -> set[str]:
@@ -186,7 +187,8 @@ async def ask_question(request: ChatRequest):
             request.question,
             context_blocks,
             request.tenant_id,
-            chat_history=request.chat_history
+            chat_history=request.chat_history,
+            model_name=request.model
         )
         logger.info(f"✓ Answer generated")
         
