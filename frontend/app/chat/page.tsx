@@ -325,7 +325,7 @@ export default function Chat() {
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               placeholder={selectedDoc ? `Ask about ${selectedDoc}...` : 'Ask me anything...'}
               className="input-textarea"
-              rows={3}
+              rows={2}
               disabled={loading}
             />
             <div className="input-footer">

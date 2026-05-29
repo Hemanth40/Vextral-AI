@@ -71,7 +71,7 @@ body {
 .nav-inner {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 16px 24px;
+    padding: 10px 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -173,7 +173,7 @@ body {
 
 /* --- Model & Doc Selector Bar --- */
 .selector-bar {
-    padding: 16px 24px;
+    padding: 8px 24px;
     border-bottom: 1px solid var(--border-color);
     background: hsla(224, 25%, 5%, 0.4);
     position: relative;
@@ -375,7 +375,7 @@ body {
 .msg-row {
     display: flex;
     gap: 16px;
-    margin-bottom: 36px;
+    margin-bottom: 20px;
     animation: msgIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -448,9 +448,9 @@ body {
     background: hsla(222, 24%, 9%, 0.5);
     border: 1px solid var(--border-color);
     border-radius: 4px 20px 20px 20px;
-    padding: 24px;
+    padding: 16px 20px;
     font-size: 14.5px;
-    line-height: 1.8;
+    line-height: 1.7;
     overflow: hidden;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
     backdrop-filter: blur(8px);
@@ -675,7 +675,7 @@ body {
     position: sticky;
     bottom: 0;
     z-index: 10;
-    padding: 16px 24px 32px;
+    padding: 8px 24px 16px;
 }
 
 .input-zone::before {
@@ -684,7 +684,7 @@ body {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 140px;
+    height: 80px;
     background: linear-gradient(transparent 10%, var(--bg-dark) 85%);
     pointer-events: none;
     z-index: -1;
@@ -714,7 +714,7 @@ body {
 
 .input-textarea {
     width: 100%;
-    padding: 20px 24px;
+    padding: 12px 18px;
     background: transparent;
     border: none;
     color: var(--text-primary);
@@ -722,7 +722,7 @@ body {
     resize: none;
     outline: none;
     font-family: inherit;
-    line-height: 1.6;
+    line-height: 1.5;
 }
 
 .input-textarea::placeholder {
@@ -733,7 +733,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 24px;
+    padding: 8px 18px;
     border-top: 1px solid var(--border-color);
     background: hsla(222, 24%, 9%, 0.3);
 }
