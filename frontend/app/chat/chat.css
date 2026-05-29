@@ -30,7 +30,6 @@ body {
     background-color: var(--bg-dark);
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     color: var(--text-primary);
-    overflow: hidden;
 }
 
 /* --- Decorative Ambient Glows --- */
@@ -793,4 +792,24 @@ body {
     cursor: not-allowed;
     box-shadow: none;
     transform: none;
+}
+
+/* --- Elegant Custom Scrollbar --- */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: hsla(220, 20%, 95%, 0.1);
+    border-radius: 10px;
+    transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: hsla(239, 84%, 67%, 0.4);
 }

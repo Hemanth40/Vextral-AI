@@ -159,7 +159,7 @@ export default function Chat() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#06080f', fontFamily: "'Inter', system-ui, sans-serif", color: '#f0f4f8', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '100vh', maxHeight: '100vh', background: '#06080f', fontFamily: "'Inter', system-ui, sans-serif", color: '#f0f4f8', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
       <ToastContainer />
       <div className="chat-ambient" />
