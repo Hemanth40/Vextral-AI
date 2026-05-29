@@ -98,8 +98,8 @@ async def ask_question(request: ChatRequest):
     logger.info(f"💬 [{mode}] Question from {request.tenant_id}: {request.question}")
     
     # Validate question
-    if not request.question or len(request.question.strip()) < 3:
-        raise HTTPException(status_code=400, detail="Question is too short")
+    if not request.question or len(request.question.strip()) < 1:
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
     
     try:
         relevant_chunks: list[dict] = []
