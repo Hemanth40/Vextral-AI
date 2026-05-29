@@ -320,7 +320,53 @@ INSTRUCTIONS:
                         return answer
                     except Exception as ex:
                         logger.error(f"Gemini fallback failed: {ex}. Re-routing to Groq fallback.")
-                        # Fall back to legacy providers
+            
+            if model_name == "groq" and self.groq_client:
+                # === EXPLICIT GROQ LLAMA 3.3 PATHWAY ===
+                logger.info("⚡ Generating response using Groq (Llama 3.3)...")
+                messages = [{"role": "system", "content": system_prompt}]
+                if chat_history:
+                    for msg in chat_history[:-1]:
+                        role = msg.get("role", "user")
+                        if role in ("user", "assistant"):
+                            messages.append({"role": role, "content": msg.get("content", "")})
+                messages.append({"role": "user", "content": user_prompt})
+                
+                try:
+                    response = self.groq_client.chat.completions.create(
+                        model=self.groq_model,
+                        messages=messages,
+                        temperature=0.1 if context else 0.4,
+                        max_tokens=1024
+                    )
+                    draft_answer = response.choices[0].message.content
+                    if context:
+                        return self._review_with_gemini(question, context, draft_answer, chat_history, "gemini")
+                    return draft_answer
+                except Exception as e:
+                    logger.error(f"Explicit Groq model call failed: {e}. Falling back to standard flows.")
+            
+            if model_name == "kimi" and self.kimi_client:
+                # === EXPLICIT KIMI K2.5 PATHWAY ===
+                logger.info("⚡ Generating response using NVIDIA Kimi K2.5...")
+                messages = [{"role": "system", "content": system_prompt}]
+                if chat_history:
+                    for msg in chat_history[:-1]:
+                        role = msg.get("role", "user")
+                        if role in ("user", "assistant"):
+                            messages.append({"role": role, "content": msg.get("content", "")})
+                messages.append({"role": "user", "content": user_prompt})
+                
+                try:
+                    response = self.kimi_client.chat.completions.create(
+                        model=self.kimi_model,
+                        messages=messages,
+                        temperature=0.3,
+                        max_tokens=1024
+                    )
+                    return response.choices[0].message.content
+                except Exception as e:
+                    logger.error(f"Explicit Kimi model call failed: {e}. Falling back to standard flows.")
             
             # === LEGACY PROVIDERS FALLBACK ===
             if context:

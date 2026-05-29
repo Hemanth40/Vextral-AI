@@ -212,6 +212,8 @@ export default function Chat() {
             >
               <option value="gemini">👑 Gemini 3.5 (Primary)</option>
               <option value="gemma">🤖 Gemma 4 (Google Studio)</option>
+              <option value="kimi">🧠 Kimi K2.5 (NVIDIA NIM)</option>
+              <option value="groq">⚡ Llama 3.3 70B (Groq)</option>
             </select>
           </div>
 
@@ -240,7 +242,15 @@ export default function Chat() {
               <p className="empty-desc">
                 {selectedDoc
                   ? 'Ask anything about this document. I\'ll find answers and supplement with broader knowledge.'
-                  : 'Ask me anything — I\'m powered by Kimi K2.5 AI.'}
+                  : `Ask me anything — I'm powered by ${
+                      selectedModel === 'gemini'
+                        ? '👑 Gemini 3.5'
+                        : selectedModel === 'gemma'
+                        ? '🤖 Gemma 4'
+                        : selectedModel === 'kimi'
+                        ? '🧠 Kimi K2.5'
+                        : '⚡ Llama 3.3'
+                    } AI.`}
               </p>
               <div className="empty-suggestions">
                 {selectedDoc ? (
