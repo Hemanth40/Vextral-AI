@@ -261,14 +261,6 @@ Vextral/
 </tr>
 </table>
 
----
-
-## 📜 License
-
-This project is licensed under the **MIT License**.
-
----
-
 <p align="center">
   Built with ❤️ by <strong>Hemanth Kumar G</strong>
 </p>
