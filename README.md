@@ -4,8 +4,11 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
 [![Supabase](https://img.shields.io/badge/Supabase-Database%20%26%20Storage-3ecf8e?style=for-the-badge&logo=supabase)](https://supabase.com)
 [![NVIDIA NIM](https://img.shields.io/badge/NVIDIA%20NIM-Multi--Model-76b900?style=for-the-badge&logo=nvidia)](https://build.nvidia.com)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-000000?style=for-the-badge&logo=vercel)](https://vextral-ai.vercel.app/)
 
 A premium, production-ready, multi-tenant RAG platform that allows users to upload complex documents and chat with them using advanced AI — styled in a custom, dark Neumorphic design system.
+
+🔗 **Live URL**: [https://vextral-ai.vercel.app/](https://vextral-ai.vercel.app/)
 
 ---
 
