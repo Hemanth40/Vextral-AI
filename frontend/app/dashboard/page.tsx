@@ -11,7 +11,7 @@ export default function Dashboard() {
     }, [router]);
 
     return (
-        <div style={{ minHeight: '100vh', background: '#0e111b', display: 'flex', alignItems: 'center', justifycontent: 'center', fontFamily: 'system-ui' }}>
+        <div style={{ minHeight: '100vh', background: '#0e111b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui' }}>
             <div style={{ color: '#8899a6', fontSize: '15px' }}>Loading Dashboard...</div>
         </div>
     );
