@@ -16,6 +16,7 @@ interface Message {
   sources?: string[];
   mode?: string;
   timestamp: Date;
+  reasoning?: string;
 }
 
 interface Document {
@@ -43,29 +44,29 @@ export default function Chat() {
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>('gemini');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { showToast, ToastContainer } = useToast();
   const [tenantId, setTenantId] = useState<string | null>(null);
 
   useEffect(() => {
-    let id = localStorage.getItem('vextral_tenant_id');
-    if (!id) {
-      id = 'user_' + Math.random().toString(36).substring(2, 11);
-      localStorage.setItem('vextral_tenant_id', id);
+    const params = new URLSearchParams(window.location.search);
+    let tenant = params.get('tenant');
+    if (!tenant) {
+      tenant = localStorage.getItem('vextral_tenant_id');
     }
-    setTenantId(id);
+    if (!tenant) {
+      tenant = 'user_' + Math.random().toString(36).substring(2, 11);
+      localStorage.setItem('vextral_tenant_id', tenant);
+    }
+    setTenantId(tenant);
   }, []);
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (tenantId) fetchDocuments();
-  }, [tenantId]);
 
   useEffect(() => {
     if (tenantId) {
-      setMessages([]);
+      fetchDocuments();
       loadHistory();
     }
-  }, [selectedDoc, tenantId]);
+  }, [tenantId, selectedDoc]);
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
@@ -92,10 +93,22 @@ export default function Chat() {
       if (!response.ok) throw new Error('Failed to fetch history');
 
       const data = await response.json();
-      const historyMessages: Message[] = (data.history || []).flatMap((item: HistoryItem) => [
-        { id: `${item.id}-q`, role: 'user' as const, content: item.question, timestamp: new Date(item.created_at) },
-        { id: `${item.id}-a`, role: 'assistant' as const, content: item.answer, timestamp: new Date(item.created_at) },
-      ]);
+      const historyMessages: Message[] = (data.history || []).flatMap((item: HistoryItem) => {
+        const contentStr = item.answer || '';
+        let answer = contentStr;
+        let reasoning = undefined;
+        if (contentStr.includes('<think>') && contentStr.includes('</think>')) {
+          const thinkStart = contentStr.indexOf('<think>') + 7;
+          const thinkEnd = contentStr.indexOf('</think>');
+          reasoning = contentStr.substring(thinkStart, thinkEnd).trim();
+          answer = contentStr.substring(thinkEnd + 8).trim();
+        }
+
+        return [
+          { id: `${item.id}-q`, role: 'user' as const, content: item.question, timestamp: new Date(item.created_at) },
+          { id: `${item.id}-a`, role: 'assistant' as const, content: answer, reasoning, timestamp: new Date(item.created_at) },
+        ];
+      });
       setMessages(historyMessages);
     } catch (error) {
       console.error('Error loading history:', error);
@@ -111,6 +124,9 @@ export default function Chat() {
     const userMessage: Message = { id: Date.now().toString(), role: 'user', content: input, timestamp: new Date() };
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '42px';
+    }
     setLoading(true);
 
     try {
@@ -129,6 +145,7 @@ export default function Chat() {
       const data = await response.json();
       setMessages((prev) => [...prev, {
         id: (Date.now() + 1).toString(), role: 'assistant', content: data.answer,
+        reasoning: data.reasoning,
         chunks_used: data.chunks_used, sources: data.sources || [], mode: data.mode, timestamp: new Date(),
       }]);
     } catch (error) {
@@ -159,7 +176,7 @@ export default function Chat() {
   };
 
   return (
-    <div style={{ height: '100vh', maxHeight: '100vh', background: '#06080f', fontFamily: "'Inter', system-ui, sans-serif", color: '#f0f4f8', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="chat-main-container">
 
       <ToastContainer />
       <div className="chat-ambient" />
@@ -212,7 +229,10 @@ export default function Chat() {
             >
               <option value="gemini">👑 Gemini 3.5 (Primary)</option>
               <option value="gemma">🤖 Gemma 4 (Google Studio)</option>
-              <option value="kimi">🧠 Kimi K2.5 (NVIDIA NIM)</option>
+              <option value="kimi">🧠 Kimi K2.6 (NVIDIA NIM)</option>
+              <option value="glm-5.1">💻 GLM 5.1 (Coding Expert)</option>
+              <option value="minimax">🎨 MiniMax-M3 (Multimodal)</option>
+              <option value="nemotron-550b">🧠 Nemotron 3 550B</option>
               <option value="groq">⚡ Llama 3.3 70B (Groq)</option>
             </select>
           </div>
@@ -248,7 +268,13 @@ export default function Chat() {
                         : selectedModel === 'gemma'
                         ? '🤖 Gemma 4'
                         : selectedModel === 'kimi'
-                        ? '🧠 Kimi K2.5'
+                        ? '🧠 Kimi K2.6'
+                        : selectedModel === 'glm-5.1'
+                        ? '💻 GLM 5.1'
+                        : selectedModel === 'minimax'
+                        ? '🎨 MiniMax-M3'
+                        : selectedModel === 'nemotron-550b'
+                        ? '🧠 Nemotron 3'
                         : '⚡ Llama 3.3'
                     } AI.`}
               </p>
@@ -263,7 +289,6 @@ export default function Chat() {
                   <>
                     <button className="suggestion-chip" onClick={() => { setInput('What can you help me with?'); }}>💡 What can you do?</button>
                     <button className="suggestion-chip" onClick={() => { setInput('Explain machine learning'); }}>🧠 Explain ML</button>
-                    <button className="suggestion-chip" onClick={() => { setInput('Write a Python function'); }}>🐍 Write Python code</button>
                   </>
                 )}
               </div>
@@ -278,6 +303,16 @@ export default function Chat() {
                   ) : (
                     <div className="ai-container">
                       <div className="ai-bubble">
+                        {message.reasoning && (
+                          <details className="reasoning-details" open>
+                            <summary className="reasoning-summary">
+                              💡 Thinking Process...
+                            </summary>
+                            <div className="reasoning-content">
+                              {message.reasoning}
+                            </div>
+                          </details>
+                        )}
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {message.content}
                         </ReactMarkdown>
@@ -320,23 +355,28 @@ export default function Chat() {
         <div className="input-wrapper">
           <div className="input-glass">
             <textarea
+              ref={textareaRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = `${e.target.scrollHeight}px`;
+              }}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               placeholder={selectedDoc ? `Ask about ${selectedDoc}...` : 'Ask me anything...'}
               className="input-textarea"
-              rows={2}
+              rows={1}
               disabled={loading}
             />
-            <div className="input-footer">
-              <span className="input-meta">
-                <strong>{selectedDoc ? `📄 ${selectedDoc}` : '🌙 General AI'}</strong> · <kbd>Enter</kbd> to send
-              </span>
-              <button onClick={handleSend} disabled={!input.trim() || loading} className={`send-btn ${input.trim() && !loading ? 'ready' : ''}`}>
-                {loading ? '⏳ Thinking...' : '✨ Send'}
-              </button>
-            </div>
+            <button onClick={handleSend} disabled={!input.trim() || loading} className={`send-btn ${input.trim() && !loading ? 'ready' : ''}`}>
+              {loading ? '⏳' : '✨ Send'}
+            </button>
           </div>
+          {selectedDoc && (
+            <div className="input-active-doc-badge">
+              📄 Active Document: <strong>{selectedDoc}</strong>
+            </div>
+          )}
         </div>
       </div>
     </div>

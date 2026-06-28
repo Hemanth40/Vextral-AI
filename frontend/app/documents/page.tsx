@@ -137,7 +137,7 @@ export default function Documents() {
     };
 
     return (
-        <div style={{ minHeight: '100vh', background: '#06080f', fontFamily: "'Inter', system-ui, sans-serif", color: '#f0f4f8' }}>
+        <div className="documents-main-container">
             <ToastContainer />
             <div className="doc-ambient" />
 
@@ -224,7 +224,9 @@ export default function Documents() {
                                 <div className="doc-details">
                                     <h3>{doc.filename}</h3>
                                     <div className="doc-meta">
-                                        <span className="doc-meta-item">📦 {doc.chunk_count} chunks</span>
+                                        <span className="doc-meta-item">
+                                            {doc.chunk_count > 0 ? `📦 ${doc.chunk_count} chunks` : '✨ Native Scan'}
+                                        </span>
                                         <span className="doc-meta-item">🕐 {timeAgo(doc.uploaded_at)}</span>
                                     </div>
                                 </div>

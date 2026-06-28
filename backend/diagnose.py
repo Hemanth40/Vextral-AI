@@ -37,43 +37,6 @@ def test_sqlite_db():
     except Exception as e:
         print(f"[ERROR] SQLite Local Database Failed: {e}")
 
-def test_lancedb():
-    print("\n--- Testing LanceDB (Local Vector Store) ---")
-    try:
-        import lancedb
-        import pyarrow as pa
-        
-        db_path = os.path.join(os.path.dirname(__file__), "data", "vextral_lancedb")
-        db = lancedb.connect(db_path)
-        
-        test_table = "tenant_test_diagnose"
-        schema = pa.schema([
-            pa.field("id", pa.string()),
-            pa.field("vector", pa.list_(pa.float32(), 2048)),
-            pa.field("text", pa.string()),
-            pa.field("source_file", pa.string())
-        ])
-        
-        if test_table in db.table_names():
-            db.drop_table(test_table)
-            
-        table = db.create_table(test_table, schema=schema)
-        table.add([{
-            "id": "1",
-            "vector": [0.1] * 2048,
-            "text": "Hello LanceDB",
-            "source_file": "test.txt"
-        }])
-        
-        res = table.search([0.1]*2048).limit(1).to_list()
-        if res and res[0]["text"] == "Hello LanceDB":
-            print("[OK] LanceDB connected, vectors indexed and queried successfully.")
-        else:
-            print(f"[ERROR] LanceDB unexpected query result: {res}")
-            
-        db.drop_table(test_table)
-    except Exception as e:
-        print(f"[ERROR] LanceDB Failed: {e}")
 
 def test_google_studio_gemini():
     print("\n--- Testing Google AI Studio (Gemini 3.5 & 2.5) ---")
@@ -146,6 +109,60 @@ def test_google_studio_gemma():
     except Exception as e:
         print(f"[ERROR] Google Studio Gemma client failed: {e}")
 
+def test_new_nvidia_models():
+    print("\n--- Testing New NVIDIA NIM Models ---")
+    
+    # 1. GLM-5.1
+    glm_key = os.getenv("NVIDIA_API_KEY_GLM")
+    if glm_key:
+        try:
+            client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=glm_key)
+            # Query z-ai/glm-5.1
+            res = client.chat.completions.create(
+                model="z-ai/glm-5.1",
+                messages=[{"role": "user", "content": "Respond with 'GLM_5.1_SUCCESS'"}],
+                max_tokens=50
+            )
+            print(f"[OK] GLM-5.1 Success. Response: {res.choices[0].message.content.strip()}")
+        except Exception as e:
+            print(f"[ERROR] GLM-5.1 Failed: {e}")
+    else:
+        print("[WARNING] NVIDIA_API_KEY_GLM missing")
+
+    # 2. DeepSeek V4 Pro
+    pro_key = os.getenv("NVIDIA_API_KEY_DEEPSEEK_PRO")
+    if pro_key:
+        try:
+            client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=pro_key)
+            res = client.chat.completions.create(
+                model="deepseek-ai/deepseek-v4-pro",
+                messages=[{"role": "user", "content": "Respond with 'DEEPSEEK_PRO_SUCCESS'"}],
+                max_tokens=50,
+                extra_body={"chat_template_kwargs": {"thinking": False}}
+            )
+            print(f"[OK] DeepSeek V4 Pro Success. Response: {res.choices[0].message.content.strip()}")
+        except Exception as e:
+            print(f"[ERROR] DeepSeek V4 Pro Failed: {e}")
+    else:
+        print("[WARNING] NVIDIA_API_KEY_DEEPSEEK_PRO missing")
+
+    # 3. DeepSeek V4 Flash
+    flash_key = os.getenv("NVIDIA_API_KEY_DEEPSEEK_FLASH")
+    if flash_key:
+        try:
+            client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=flash_key)
+            res = client.chat.completions.create(
+                model="deepseek-ai/deepseek-v4-flash",
+                messages=[{"role": "user", "content": "Respond with 'DEEPSEEK_FLASH_SUCCESS'"}],
+                max_tokens=50,
+                extra_body={"chat_template_kwargs": {"thinking": True, "reasoning_effort": "high"}}
+            )
+            print(f"[OK] DeepSeek V4 Flash Success. Response: {res.choices[0].message.content.strip()}")
+        except Exception as e:
+            print(f"[ERROR] DeepSeek V4 Flash Failed: {e}")
+    else:
+        print("[WARNING] NVIDIA_API_KEY_DEEPSEEK_FLASH missing")
+
 def test_groq():
     print("\n--- Testing Groq API ---")
     key = os.getenv("GROQ_API_KEY")
@@ -159,44 +176,9 @@ def test_groq():
     except Exception as e:
         print(f"[ERROR] Groq API Failed: {e}")
 
-def test_upstash_redis():
-    print("\n--- Testing Upstash Redis ---")
-    url = os.getenv("UPSTASH_REDIS_REST_URL")
-    token = os.getenv("UPSTASH_REDIS_REST_TOKEN")
-    if not url or not token:
-        print("[WARNING] Upstash Redis URL or Token missing in environment variables.")
-        return
-    try:
-        from upstash_redis import Redis
-        client = Redis(url=url, token=token)
-        test_key = "vextral:test:diagnose"
-        client.set(test_key, "Upstash is operational!")
-        val = client.get(test_key)
-        if val == "Upstash is operational!":
-            print("[OK] Upstash Redis Cloud Database verified. Read and Write operations succeeded.")
-        else:
-            print(f"[ERROR] Upstash Redis returned unexpected value: {val}")
-        client.delete(test_key)
-    except Exception as e:
-        print(f"[ERROR] Upstash Redis Connection Failed: {e}")
-
-def test_qdrant_cloud():
-    print("\n--- Testing Qdrant Cloud ---")
-    url = os.getenv("QDRANT_URL")
-    key = os.getenv("QDRANT_KEY")
-    if not url or not key:
-        print("[WARNING] Qdrant Cloud URL or Key missing in environment variables.")
-        return
-    try:
-        from qdrant_client import QdrantClient
-        client = QdrantClient(url=url, api_key=key, timeout=10)
-        collections = client.get_collections().collections
-        print(f"[OK] Qdrant Cloud verified successfully. Connected. Found {len(collections)} collections.")
-    except Exception as e:
-        print(f"[ERROR] Qdrant Cloud Connection Failed: {e}")
 
 if __name__ == "__main__":
-    for test in [test_sqlite_db, test_lancedb, test_google_studio_gemini, test_google_studio_gemma, test_groq, test_upstash_redis, test_qdrant_cloud]:
+    for test in [test_sqlite_db, test_google_studio_gemini, test_google_studio_gemma, test_groq, test_new_nvidia_models]:
         try:
             test()
         except Exception as ex:

@@ -1,23 +1,19 @@
 """
 Vextral Upload Router
-Handles document upload, processing, and deletion
+Handles document upload, listing, and deletion for Vextral v2.
+Integrates Supabase Storage and Gemini File API.
 """
 
 import os
 import logging
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from dotenv import load_dotenv
-from uuid import uuid4
-from datetime import datetime
 
-from services.parser import parser
-from services.embedder import embedder
-from services.vector_store import vector_store
-from services.database import insert_document, delete_document
+from services.file_storage import file_storage
+from services.gemini_reader import gemini_reader
+from services.database import insert_document, get_document, list_documents, delete_document, count_documents
 
 load_dotenv()
-
-# Configure logger
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/upload", tags=["upload"])
@@ -29,12 +25,13 @@ async def upload_document(
     tenant_id: str = Form(...)
 ):
     """
-    Upload and process a document
+    Upload and process a document.
+    Permanently stores in Supabase Storage, then registers with Gemini File API.
     """
     logger.info(f"{'='*60}")
     logger.info(f"📄 Processing upload: {file.filename} for tenant: {tenant_id}")
     
-    # Step 1: Validate file type
+    # 1. Validate file type
     allowed_extensions = ['.pdf', '.docx', '.txt', '.csv', '.md', '.json', '.png', '.jpg', '.jpeg', '.webp']
     file_ext = '.' + file.filename.lower().split('.')[-1]
     
@@ -45,107 +42,44 @@ async def upload_document(
         )
     
     try:
-        # Step 1.5: Enforce Storage Limits to prevent abuse
-        # 1. Limit per-user documents (Max 5)
-        from services.database import execute_query
-        count_query = "SELECT COUNT(*) FROM documents WHERE tenant_id = %s"
-        doc_count = execute_query(count_query, (tenant_id,), fetch=True)
-        if doc_count and doc_count[0][0] >= 5:
+        # 2. Enforce limits: Max 5 documents per tenant
+        doc_count = count_documents(tenant_id)
+        if doc_count >= 5:
             raise HTTPException(
                 status_code=403,
                 detail="Storage limit reached. You can only store up to 5 documents. Please delete an old document first."
             )
 
-        # Step 2: Read file bytes and enforce size limit
+        # 3. Read file bytes and enforce size limit
         file_bytes = await file.read()
         MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
         
         if len(file_bytes) > MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=413,
-                detail="File is too large. Maximum allowed size is 50MB to preserve free tier limits."
+                detail="File is too large. Maximum allowed size is 50MB."
             )
             
         logger.info(f"✓ Read {len(file_bytes)} bytes from {file.filename}")
         
-        # Step 3: Parse document
-        logger.info(f"⚙️  Parsing document...")
-        chunks = parser.parse_document(file_bytes, file.filename)
-        logger.info(f"✓ Extracted {len(chunks)} chunks")
-
-        if not chunks:
-            raise HTTPException(status_code=400, detail="No readable content found in this document")
+        # 4. Upload permanently to Supabase Storage
+        logger.info("⚙️ Uploading to Supabase Storage...")
+        supabase_path = file_storage.upload_file(tenant_id, file.filename, file_bytes)
         
-        # Step 4: Generate embeddings
-        logger.info(f"⚙️  Generating embeddings...")
-        chunks_with_vectors = []
-
-        text_items = [
-            (i, chunk) for i, chunk in enumerate(chunks)
-            if chunk.get("chunk_type") == "text" and str(chunk.get("text", "")).strip()
-        ]
-        image_items = [
-            (i, chunk) for i, chunk in enumerate(chunks)
-            if chunk.get("chunk_type") == "image"
-        ]
-
-        # Batch embed text chunks for faster uploads on large documents.
-        if text_items:
-            texts = [chunk["text"] for _, chunk in text_items]
-            vectors = embedder.embed_text_batch(texts, input_type="passage", batch_size=32)
-
-            for (orig_index, chunk), vector in zip(text_items, vectors):
-                if vector is None:
-                    logger.warning(f"⚠️  Warning: Failed to embed text chunk {orig_index}")
-                    continue
-
-                chunks_with_vectors.append({
-                    "id": str(uuid4()),
-                    "vector": vector,
-                    "text": chunk["text"],
-                    "source_file": file.filename,
-                    "page_number": chunk.get("page_number", 0),
-                    "chunk_type": chunk["chunk_type"],
-                    "chunk_index": chunk.get("chunk_index", orig_index)
-                })
-
-        # Image chunks are typically fewer; keep them per-item.
-        for orig_index, chunk in image_items:
-            try:
-                vector = embedder.embed_image(chunk["image_base64"])
-                chunks_with_vectors.append({
-                    "id": str(uuid4()),
-                    "vector": vector,
-                    "text": chunk["text"],
-                    "source_file": file.filename,
-                    "page_number": chunk.get("page_number", 0),
-                    "chunk_type": chunk["chunk_type"],
-                    "chunk_index": chunk.get("chunk_index", orig_index)
-                })
-            except Exception as e:
-                logger.warning(f"⚠️  Warning: Failed to embed image chunk {orig_index}: {e}")
-                continue
+        # 5. Upload to Gemini File API
+        logger.info("⚙️ Registering with Gemini File API...")
+        gemini_data = gemini_reader.upload_to_gemini(file_bytes, file.filename)
         
-        logger.info(f"✓ Generated {len(chunks_with_vectors)} embeddings")
-
-        if not chunks_with_vectors:
-            raise HTTPException(
-                status_code=400,
-                detail="Unable to generate embeddings from this document. Try a clearer or text-based file."
-            )
-        
-        # Step 5: Ensure collection exists
-        logger.info(f"⚙️  Preparing vector database...")
-        vector_store.ensure_collection(tenant_id)
-        
-        # Step 6: Upsert to Qdrant
-        logger.info(f"⚙️  Storing vectors...")
-        vector_store.upsert_chunks(tenant_id, chunks_with_vectors)
-        
-        # Step 7: Save metadata to PostgreSQL
-        logger.info(f"⚙️  Saving metadata...")
-        insert_document(tenant_id, file.filename, len(chunks_with_vectors))
-        logger.info(f"✓ Saved metadata to database")
+        # 6. Save metadata to database
+        logger.info("⚙️ Saving document metadata...")
+        insert_document(
+            tenant_id=tenant_id,
+            filename=file.filename,
+            chunk_count=0,  # No chunking in native Gemini reader
+            supabase_path=supabase_path,
+            gemini_file_uri=gemini_data["gemini_file_uri"],
+            gemini_expires_at=gemini_data["gemini_expires_at"]
+        )
         
         logger.info(f"✅ SUCCESS: {file.filename} processed successfully!")
         logger.info(f"{'='*60}")
@@ -153,7 +87,8 @@ async def upload_document(
         return {
             "success": True,
             "filename": file.filename,
-            "chunks_processed": len(chunks_with_vectors)
+            "supabase_path": supabase_path,
+            "gemini_file_uri": gemini_data["gemini_file_uri"]
         }
         
     except HTTPException:
@@ -165,36 +100,17 @@ async def upload_document(
 
 
 @router.get("/list/{tenant_id}")
-async def list_documents(tenant_id: str):
+async def list_tenant_documents(tenant_id: str):
     """
-    List all documents for a tenant
+    List all documents for a tenant.
     """
-    from services.database import execute_query
-    
     try:
-        query = """
-            SELECT id, filename, chunk_count, uploaded_at 
-            FROM documents 
-            WHERE tenant_id = %s 
-            ORDER BY uploaded_at DESC
-        """
-        documents = execute_query(query, (tenant_id,), fetch=True)
-        
-        # Convert datetime objects to ISO strings for JSON serialization
-        results = []
-        if documents:
-            for doc in documents:
-                doc_dict = dict(doc)
-                if isinstance(doc_dict.get('uploaded_at'), datetime):
-                    doc_dict['uploaded_at'] = doc_dict['uploaded_at'].isoformat()
-                results.append(doc_dict)
-        
+        docs = list_documents(tenant_id)
         return {
             "success": True,
-            "documents": results,
-            "count": len(results)
+            "documents": docs,
+            "count": len(docs)
         }
-        
     except Exception as e:
         logger.error(f"Error listing documents: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
@@ -203,24 +119,36 @@ async def list_documents(tenant_id: str):
 @router.delete("/document/{filename}")
 async def delete_document_endpoint(filename: str, tenant_id: str):
     """
-    Delete a document and all its vectors
+    Delete a document and clean up all storage.
     """
-    logger.info(f"🗑️  Deleting document: {filename} for tenant: {tenant_id}")
+    logger.info(f"🗑️ Deleting document: {filename} for tenant: {tenant_id}")
     
     try:
-        # Delete from Qdrant
-        vector_store.delete_document(tenant_id, filename)
+        # Fetch metadata
+        doc = get_document(tenant_id, filename)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        # 1. Delete from Supabase Storage
+        if doc.get("supabase_path"):
+            file_storage.delete_file(doc["supabase_path"])
         
-        # Delete from PostgreSQL
+        # 2. Delete from Gemini File API
+        if doc.get("gemini_file_uri"):
+            gemini_reader.delete_from_gemini(doc["gemini_file_uri"])
+        
+        # 3. Delete database record
         delete_document(tenant_id, filename)
         
-        logger.info(f"✓ Deleted {filename}")
-        
+        logger.info(f"✓ Deleted {filename} successfully")
         return {
             "success": True,
             "message": f"Document {filename} deleted successfully"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error deleting document: {e}")
         raise HTTPException(status_code=500, detail=f"Deletion failed: {str(e)}")
+

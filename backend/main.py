@@ -29,9 +29,6 @@ app = FastAPI(
     description="Ask Your Documents - Multi-Tenant RAG Platform",
     version="1.0.0"
 )
-@app.api_route("/health", methods=["GET", "HEAD"])
-def health():
-    return {"status": "ok"}
 
 # Configure CORS - Allow all origins for Vercel frontend
 app.add_middleware(
@@ -54,7 +51,7 @@ async def startup_event():
     logger.info("🚀 Vextral API Started Successfully")
     logger.info("="*60)
     logger.info("📚 Multi-Tenant RAG Platform")
-    logger.info("🤖 Powered by NVIDIA NIM")
+    logger.info("🤖 Powered by Multi-Model AI (Gemini + Kimi + DeepSeek + GLM)")
     logger.info("="*60)
 
 

@@ -72,3 +72,27 @@ backend/vextral.db
 backend/data/
 backend/diag_output.txt
 backend/diag_output_utf8.txt
+
+# ========================
+# OLD / UNUSED ENVIRONMENTS
+# ========================
+backend/venv_old/
+
+# ========================
+# LOCAL-ONLY DOCS (not for repo)
+# ========================
+INTERVIEW_CHEATSHEET.md
+INTERVIEW_GUIDE.md
+VISUAL_EXPLANATIONS.md
+
+# ========================
+# FRONTEND LINT OUTPUT
+# ========================
+frontend/lint.json
+frontend/lint.txt
+frontend/lint_output.txt
+
+# ========================
+# SCRATCH & TEMP
+# ========================
+scratch/

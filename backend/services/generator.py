@@ -2,7 +2,7 @@
 Vextral Answer Generation Service - Advanced Model Architecture
 - Google AI Studio Gemma 4 → gemma-4-31b-it (primary) with gemma-4-26b-it fallback
 - Google Gemini → gemini-3.5-flash (primary) with gemini-2.5-flash fallback
-- NVIDIA NIM Kimi K2.5 → Moonshot AI (legacy option)
+- NVIDIA NIM Kimi K2.6 → moonshotai/kimi-k2.6 (General AI + fallback)
 """
 
 import os
@@ -42,14 +42,45 @@ class GeneratorService:
         self.gemini_primary = "gemini-3.5-flash"
         self.gemini_fallback = "gemini-2.5-flash"
         
-        # === Legacy / Fallback Kimi K2.5 Client (NVIDIA NIM) ===
+        # === Kimi K2.6 Client (NVIDIA NIM) ===
         kimi_key = os.getenv("NVIDIA_API_KEY_KIMI", "")
         self.kimi_client = OpenAI(
             base_url="https://integrate.api.nvidia.com/v1",
             api_key=kimi_key,
-            timeout=120.0
+            timeout=20.0,
+            max_retries=1
         )
-        self.kimi_model = "moonshotai/kimi-k2-instruct"
+        self.kimi_model = "moonshotai/kimi-k2.6"
+
+        # === GLM 5.1 Client (NVIDIA NIM) ===
+        glm_key = os.getenv("NVIDIA_API_KEY_GLM", "")
+        self.glm_client = OpenAI(
+            base_url="https://integrate.api.nvidia.com/v1",
+            api_key=glm_key,
+            timeout=20.0,
+            max_retries=1
+        )
+        self.glm_model = "z-ai/glm-5.1"
+        
+        # === MiniMax M3 Client (NVIDIA NIM) ===
+        minimax_key = os.getenv("NVIDIA_API_KEY_MINIMAX", "")
+        self.minimax_client = OpenAI(
+            base_url="https://integrate.api.nvidia.com/v1",
+            api_key=minimax_key,
+            timeout=20.0,
+            max_retries=1
+        )
+        self.minimax_model = "minimaxai/minimax-m3"
+
+        # === Nemotron 3 Ultra Client (NVIDIA NIM) ===
+        nemotron_key = os.getenv("NVIDIA_API_KEY_NEMOTRON", "")
+        self.nemotron_client = OpenAI(
+            base_url="https://integrate.api.nvidia.com/v1",
+            api_key=nemotron_key,
+            timeout=20.0,
+            max_retries=1
+        )
+        self.nemotron_model = "nvidia/nemotron-3-ultra-550b-a55b"
         
         # === Legacy / Fallback Groq Llama Client ===
         groq_key = os.getenv("GROQ_API_KEY", "")
@@ -216,9 +247,10 @@ Please review, correct if necessary, and output the FINAL answer."""
         chat_history: list = None,
         stream: bool = False,
         model_name: Optional[str] = "gemini"
-    ) -> str:
+    ) -> dict:
         """
-        Generate answer using the selected model with fully robust fallback procedures
+        Generate answer using the selected model with fully robust fallback procedures.
+        Returns a dictionary: {"answer": str, "reasoning": Optional[str]}
         """
         try:
             model_name = (model_name or "gemini").lower()
@@ -234,7 +266,7 @@ INSTRUCTIONS:
 3. If the context is insufficient, explicitly say what is missing.
 4. Keep the answer extremely clear, neat, and highly readable for all users.
 5. Provide a perfectly formatted Markdown response (headings, bullets, bold text, tables where applicable).
-6. DO NOT use explicit citation chunks like [Source N] in the text. Just answer naturally and accurately based on the context."""
+6. DO NOT use explicitcitation chunks like [Source N] in the text. Just answer naturally and accurately based on the context."""
 
                 user_prompt = f"""DOCUMENT CONTEXT:
 {context}
@@ -258,12 +290,93 @@ INSTRUCTIONS:
                 user_prompt = question
 
             # 2. ROUTE TO SELECT MODEL
+
+            # === GLM 5.1 ===
+            if model_name in ("glm-5.1", "glm") and self.glm_client:
+                logger.info("⚡ Generating response using GLM-5.1...")
+                messages = [{"role": "system", "content": system_prompt}]
+                if chat_history:
+                    for msg in chat_history[:-1]:
+                        role = msg.get("role", "user")
+                        if role in ("user", "assistant"):
+                            messages.append({"role": role, "content": msg.get("content", "")})
+                messages.append({"role": "user", "content": user_prompt})
+                try:
+                    response = self.glm_client.chat.completions.create(
+                        model=self.glm_model,
+                        messages=messages,
+                        temperature=1.0,
+                        top_p=1.0,
+                        max_tokens=16384
+                    )
+                    return {"answer": response.choices[0].message.content, "reasoning": None}
+                except Exception as e:
+                    logger.error(f"GLM-5.1 failed: {e}. Re-routing to Gemini fallback.")
+                    model_name = "gemini"
+
+            # === MINIMAX M3 ===
+            if model_name in ("minimax", "minimax-m3") and self.minimax_client:
+                logger.info("⚡ Generating response using MiniMax-M3...")
+                messages = [{"role": "system", "content": system_prompt}]
+                if chat_history:
+                    for msg in chat_history[:-1]:
+                        role = msg.get("role", "user")
+                        if role in ("user", "assistant"):
+                            messages.append({"role": role, "content": msg.get("content", "")})
+                messages.append({"role": "user", "content": user_prompt})
+                try:
+                    response = self.minimax_client.chat.completions.create(
+                        model=self.minimax_model,
+                        messages=messages,
+                        temperature=1.0,
+                        top_p=0.95,
+                        max_tokens=8192
+                    )
+                    return {"answer": response.choices[0].message.content, "reasoning": None}
+                except Exception as e:
+                    logger.error(f"MiniMax-M3 failed: {e}. Re-routing to Gemini fallback.")
+                    model_name = "gemini"
+
+            # === NEMOTRON-3-ULTRA-550B (Reasoning enabled) ===
+            if model_name in ("nemotron", "nemotron-550b") and self.nemotron_client:
+                logger.info("⚡ Generating response using Nemotron-3-Ultra-550b...")
+                messages = [{"role": "system", "content": system_prompt}]
+                if chat_history:
+                    for msg in chat_history[:-1]:
+                        role = msg.get("role", "user")
+                        if role in ("user", "assistant"):
+                            messages.append({"role": role, "content": msg.get("content", "")})
+                messages.append({"role": "user", "content": user_prompt})
+                try:
+                    response = self.nemotron_client.chat.completions.create(
+                        model=self.nemotron_model,
+                        messages=messages,
+                        temperature=1.0,
+                        top_p=0.95,
+                        max_tokens=16384,
+                        extra_body={"chat_template_kwargs": {"enable_thinking": True}, "reasoning_budget": 16384}
+                    )
+                    ans_msg = response.choices[0].message
+                    reasoning = getattr(ans_msg, "reasoning_content", None) or getattr(ans_msg, "reasoning", None)
+                    content = ans_msg.content or ""
+                    
+                    if not reasoning and "<think>" in content:
+                        import re
+                        match = re.search(r"<think>(.*?)</think>", content, re.DOTALL)
+                        if match:
+                            reasoning = match.group(1).strip()
+                            content = content.replace(match.group(0), "").strip()
+                            
+                    return {"answer": content, "reasoning": reasoning}
+                except Exception as e:
+                    logger.error(f"Nemotron-3-Ultra-550b failed: {e}. Re-routing to Gemini fallback.")
+                    model_name = "gemini"
+
+            # === GOOGLE STUDIO GEMMA 4 PATHWAY ===
             if model_name == "gemma" and self.google_client:
-                # === GOOGLE STUDIO GEMMA 4 PATHWAY ===
                 logger.info(f"⚡ Generating response using Gemma 4 ({self.gemma_primary})...")
                 api_start = time.time()
                 try:
-                    # Try primary Gemma 4 model
                     answer = self._generate_google_content(
                         model_id=self.gemma_primary,
                         system_prompt=system_prompt,
@@ -272,11 +385,10 @@ INSTRUCTIONS:
                         temperature=0.2
                     )
                     logger.info(f"✓ Gemma 4 response complete ({self.gemma_primary}) in {time.time() - api_start:.2f}s")
-                    return answer
+                    return {"answer": answer, "reasoning": None}
                 except Exception as e:
                     logger.warning(f"Gemma 4 primary model ({self.gemma_primary}) failed: {e}. Trying fallback ({self.gemma_fallback})")
                     try:
-                        # Fallback to secondary Gemma model
                         answer = self._generate_google_content(
                             model_id=self.gemma_fallback,
                             system_prompt=system_prompt,
@@ -285,17 +397,16 @@ INSTRUCTIONS:
                             temperature=0.2
                         )
                         logger.info(f"✓ Gemma 4 fallback response complete ({self.gemma_fallback})")
-                        return answer
+                        return {"answer": answer, "reasoning": None}
                     except Exception as ex:
                         logger.error(f"Gemma 4 fallback failed: {ex}. Re-routing to Gemini.")
-                        model_name = "gemini" # Re-route to Gemini
-            
+                        model_name = "gemini"
+
+            # === GOOGLE STUDIO GEMINI PATHWAY ===
             if model_name == "gemini" and self.google_client:
-                # === GOOGLE STUDIO GEMINI PATHWAY ===
                 logger.info(f"⚡ Generating response using Gemini ({self.gemini_primary})...")
                 api_start = time.time()
                 try:
-                    # Try primary Gemini model
                     answer = self._generate_google_content(
                         model_id=self.gemini_primary,
                         system_prompt=system_prompt,
@@ -304,11 +415,10 @@ INSTRUCTIONS:
                         temperature=0.2
                     )
                     logger.info(f"✓ Gemini response complete ({self.gemini_primary}) in {time.time() - api_start:.2f}s")
-                    return answer
+                    return {"answer": answer, "reasoning": None}
                 except Exception as e:
                     logger.warning(f"Gemini primary model ({self.gemini_primary}) failed: {e}. Trying fallback ({self.gemini_fallback})")
                     try:
-                        # Fallback to secondary Gemini model
                         answer = self._generate_google_content(
                             model_id=self.gemini_fallback,
                             system_prompt=system_prompt,
@@ -317,12 +427,12 @@ INSTRUCTIONS:
                             temperature=0.2
                         )
                         logger.info(f"✓ Gemini fallback response complete ({self.gemini_fallback})")
-                        return answer
+                        return {"answer": answer, "reasoning": None}
                     except Exception as ex:
                         logger.error(f"Gemini fallback failed: {ex}. Re-routing to Groq fallback.")
-            
+
+            # === EXPLICIT GROQ LLAMA 3.3 PATHWAY ===
             if model_name == "groq" and self.groq_client:
-                # === EXPLICIT GROQ LLAMA 3.3 PATHWAY ===
                 logger.info("⚡ Generating response using Groq (Llama 3.3)...")
                 messages = [{"role": "system", "content": system_prompt}]
                 if chat_history:
@@ -331,7 +441,6 @@ INSTRUCTIONS:
                         if role in ("user", "assistant"):
                             messages.append({"role": role, "content": msg.get("content", "")})
                 messages.append({"role": "user", "content": user_prompt})
-                
                 try:
                     response = self.groq_client.chat.completions.create(
                         model=self.groq_model,
@@ -341,14 +450,15 @@ INSTRUCTIONS:
                     )
                     draft_answer = response.choices[0].message.content
                     if context:
-                        return self._review_with_gemini(question, context, draft_answer, chat_history, "gemini")
-                    return draft_answer
+                        polished = self._review_with_gemini(question, context, draft_answer, chat_history, "gemini")
+                        return {"answer": polished, "reasoning": None}
+                    return {"answer": draft_answer, "reasoning": None}
                 except Exception as e:
                     logger.error(f"Explicit Groq model call failed: {e}. Falling back to standard flows.")
-            
+
+            # === EXPLICIT KIMI K2.6 PATHWAY ===
             if model_name == "kimi" and self.kimi_client:
-                # === EXPLICIT KIMI K2.5 PATHWAY ===
-                logger.info("⚡ Generating response using NVIDIA Kimi K2.5...")
+                logger.info("⚡ Generating response using NVIDIA Kimi K2.6...")
                 messages = [{"role": "system", "content": system_prompt}]
                 if chat_history:
                     for msg in chat_history[:-1]:
@@ -356,21 +466,21 @@ INSTRUCTIONS:
                         if role in ("user", "assistant"):
                             messages.append({"role": role, "content": msg.get("content", "")})
                 messages.append({"role": "user", "content": user_prompt})
-                
                 try:
                     response = self.kimi_client.chat.completions.create(
                         model=self.kimi_model,
                         messages=messages,
-                        temperature=0.3,
-                        max_tokens=1024
+                        temperature=1.0,
+                        top_p=1.0,
+                        max_tokens=16384
                     )
-                    return response.choices[0].message.content
+                    return {"answer": response.choices[0].message.content, "reasoning": None}
                 except Exception as e:
-                    logger.error(f"Explicit Kimi model call failed: {e}. Falling back to standard flows.")
-            
+                    logger.error(f"Explicit Kimi model call failed: {e}. Re-routing to Gemini fallback.")
+                    model_name = "gemini"
+
             # === LEGACY PROVIDERS FALLBACK ===
             if context:
-                # RAG fallback uses Groq / Llama
                 if self.groq_client:
                     logger.info("⚡ RAG generation falling back to Groq Worker...")
                     messages = [{"role": "system", "content": system_prompt}]
@@ -380,7 +490,6 @@ INSTRUCTIONS:
                             if role in ("user", "assistant"):
                                 messages.append({"role": role, "content": msg.get("content", "")})
                     messages.append({"role": "user", "content": user_prompt})
-                    
                     response = self.groq_client.chat.completions.create(
                         model=self.groq_model,
                         messages=messages,
@@ -388,11 +497,10 @@ INSTRUCTIONS:
                         max_tokens=1024
                     )
                     draft_answer = response.choices[0].message.content
-                    
-                    # Review with Gemini if possible
-                    return self._review_with_gemini(question, context, draft_answer, chat_history, model_name)
-            
-            # General Chat fallback uses Kimi
+                    polished = self._review_with_gemini(question, context, draft_answer, chat_history, model_name)
+                    return {"answer": polished, "reasoning": None}
+
+            # General Chat fallback uses Kimi with a fail-safe Google Gemini recovery flow
             logger.info("⚡ Chat generation falling back to NVIDIA Kimi Worker...")
             messages = [{"role": "system", "content": system_prompt}]
             if chat_history:
@@ -402,13 +510,27 @@ INSTRUCTIONS:
                         messages.append({"role": role, "content": msg.get("content", "")})
             messages.append({"role": "user", "content": user_prompt})
             
-            response = self.kimi_client.chat.completions.create(
-                model=self.kimi_model,
-                messages=messages,
-                temperature=0.3,
-                max_tokens=1024
-            )
-            return response.choices[0].message.content
+            try:
+                response = self.kimi_client.chat.completions.create(
+                    model=self.kimi_model,
+                    messages=messages,
+                    temperature=1.0,
+                    top_p=1.0,
+                    max_tokens=16384
+                )
+                return {"answer": response.choices[0].message.content, "reasoning": None}
+            except Exception as e:
+                logger.warning(f"Kimi fallback failed: {e}. Executing final Google Gemini recovery flow.")
+                if self.google_client:
+                    answer = self._generate_google_content(
+                        model_id=self.gemini_primary,
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        chat_history=chat_history,
+                        temperature=0.2
+                    )
+                    return {"answer": answer, "reasoning": None}
+                raise e
                 
         except Exception as e:
             logger.error(f"Error generating answer for tenant {tenant_id}: {e}")
@@ -427,4 +549,5 @@ if __name__ == "__main__":
         print(f"Gemini: {ans}")
     except Exception as err:
         print(f"Error testing Gemini: {err}")
+
 
