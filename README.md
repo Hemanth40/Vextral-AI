@@ -101,6 +101,3 @@ cd frontend
 npm install
 npm run dev
 ```
-Open **[http://localhost:3000](http://localhost:3000)** and start chatting!
-
-Built with ❤️ by **Hemanth Kumar G**
