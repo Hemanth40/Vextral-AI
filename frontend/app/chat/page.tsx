@@ -233,6 +233,7 @@ export default function Chat() {
               <option value="glm-5.1">💻 GLM 5.1 (Coding Expert)</option>
               <option value="minimax">🎨 MiniMax-M3 (Multimodal)</option>
               <option value="nemotron-550b">🧠 Nemotron 3 550B</option>
+              {/* Groq GPT-OSS 120B Model */}
               <option value="groq">⚡ GPT-OSS 120B (Groq)</option>
             </select>
           </div>
