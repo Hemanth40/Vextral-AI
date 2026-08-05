@@ -82,7 +82,7 @@ class GeneratorService:
         )
         self.nemotron_model = "nvidia/nemotron-3-ultra-550b-a55b"
         
-        # === Legacy / Fallback Groq Llama Client ===
+        # === Groq GPT-OSS 120B Client ===
         groq_key = os.getenv("GROQ_API_KEY", "")
         if groq_key:
             self.groq_client = OpenAI(
@@ -92,7 +92,7 @@ class GeneratorService:
             )
         else:
             self.groq_client = None
-        self.groq_model = "llama-3.3-70b-versatile"
+        self.groq_model = "openai/gpt-oss-120b"
 
     def _build_context(self, context_chunks: list[Any]) -> str:
         """
@@ -431,9 +431,9 @@ INSTRUCTIONS:
                     except Exception as ex:
                         logger.error(f"Gemini fallback failed: {ex}. Re-routing to Groq fallback.")
 
-            # === EXPLICIT GROQ LLAMA 3.3 PATHWAY ===
+            # === EXPLICIT GROQ GPT-OSS 120B PATHWAY ===
             if model_name == "groq" and self.groq_client:
-                logger.info("⚡ Generating response using Groq (Llama 3.3)...")
+                logger.info("⚡ Generating response using Groq (GPT-OSS 120B)...")
                 messages = [{"role": "system", "content": system_prompt}]
                 if chat_history:
                     for msg in chat_history[:-1]:
