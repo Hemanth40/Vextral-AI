@@ -4,6 +4,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
 [![Supabase](https://img.shields.io/badge/Supabase-Database%20%26%20Storage-3ecf8e?style=for-the-badge&logo=supabase)](https://supabase.com)
 [![NVIDIA NIM](https://img.shields.io/badge/NVIDIA%20NIM-Multi--Model-76b900?style=for-the-badge&logo=nvidia)](https://build.nvidia.com)
+[![Groq](https://img.shields.io/badge/Groq-GPT--OSS%20120B-f55036?style=for-the-badge&logo=groq)](https://groq.com)
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-000000?style=for-the-badge&logo=vercel)](https://vextral-ai.vercel.app/)
 
 A premium, production-ready, multi-tenant RAG platform that allows users to upload complex documents and chat with them using advanced AI — styled in a custom, dark Neumorphic design system.
@@ -14,16 +15,17 @@ A premium, production-ready, multi-tenant RAG platform that allows users to uplo
 
 ## 🚀 Key Features
 
-* 🧬 **Zero-Loss Native Scan RAG**: Swapped heavy, lossy vector chunk indexing (removed Qdrant and LanceDB) for **Gemini File API direct document scans**. The platform handles full multi-modal files (up to 1M tokens) natively, preserving tables, layouts, charts, and cross-references exactly as they exist.
-* 🧠 **Flagship Multi-Model Grid**: Integrated the latest top-tier models via NVIDIA NIM:
-  - **`nvidia/nemotron-3-ultra-550b-a55b`**: Powerful 550B reasoning model with chain-of-thought logs enabled.
-  - **`minimaxai/minimax-m3`**: Highly capable multimodal model (text, image, video).
-  - **`z-ai/glm-5.1`**: Expert coding, software debugging, and logical layout expert.
-  - **`moonshotai/kimi-k2.6`**: Multi-turn general conversation specialist.
-  - **`Gemini 3.5 & Gemma 4`**: Primary document readers with full multimodal visual perception.
-* 💡 **Interactive Thinking Drawer**: Built a custom collapsible UI panel that captures Nemotron's logical chain-of-thought tokens, displaying live reasoning logs inside a glassmorphic expander drawer before the final answer is shown.
-* 🎨 **Dark Neumorphic (Soft UI) System**: Refactored the entire interface (Home, Chat, and Documents) into a state-of-the-art dark neumorphic layout with realistic double-shadow elements, inset typing inputs, and beveled pill-styled metadata badges.
-* 📦 **Cloud-Native Storage**: Integrated the HTTP-based **Supabase SDK client** and Supabase Private Storage Buckets to handle document lifetime registrations and automatic Google URI renewals (re-uploading expired 48-hour links seamlessly behind the scenes).
+* 🧬 **Zero-Loss Native Scan RAG**: Replaced heavy vector chunk indexing (Qdrant / LanceDB) with **Gemini File API direct document scans**. Full multi-modal files (up to 1M tokens) are analyzed natively — tables, layouts, charts, and cross-references preserved exactly as they exist.
+* 🧠 **7-Model AI Grid**: Integrated the latest top-tier models:
+  - **`Gemini 3.5 & Gemma 4`** — Primary document readers with full multimodal visual perception.
+  - **`nvidia/nemotron-3-ultra-550b-a55b`** — 550B reasoning model with chain-of-thought logs.
+  - **`minimaxai/minimax-m3`** — Multimodal model (text, image, video).
+  - **`z-ai/glm-5.1`** — Expert coding & software debugging.
+  - **`moonshotai/kimi-k2.6`** — Multi-turn general conversation specialist.
+  - **`openai/gpt-oss-120b`** (via Groq) — Ultra-fast 120B open-source GPT model.
+* 💡 **Interactive Thinking Drawer**: Collapsible UI panel capturing Nemotron's chain-of-thought tokens inside a glassmorphic expander drawer before the final answer.
+* 🎨 **Dark Neumorphic (Soft UI) Design**: Entire interface (Home, Chat, Documents) built with realistic double-shadow elements, inset inputs, and beveled metadata badges.
+* 📦 **Cloud-Native Storage**: Supabase Storage Buckets for document lifecycle management with automatic Google Gemini URI renewal (48h expiry handled transparently).
 
 ---
 
@@ -35,7 +37,7 @@ A premium, production-ready, multi-tenant RAG platform that allows users to uplo
                                   │  • Neumorphic Design      │
                                   │  • Collapsible Think Box  │
                                   │  • Auto-Expanding Input   │
-                                  └─────────────#─────────────┘
+                                  └─────────────┬─────────────┘
                                                 │
                                                 ▼
                                   ┌───────────────────────────┐
@@ -43,22 +45,22 @@ A premium, production-ready, multi-tenant RAG platform that allows users to uplo
                                   │                           │
                                   │   ┌───────────────────┐   │
                                   │   │  Chat & Ask API   │   │
-                                  │   └─────────#─────────┘   │
+                                  │   └─────────┬─────────┘   │
                                   │             │             │
                                   │             ▼             │
                                   │   ┌───────────────────┐   │
                                   │   │ Gemini File RAG   │   │
                                   │   │ • 48h Auto-Refresh│   │
-                                  │   └─────────#─────────┘   │
-                                  └─────────────#─────────────┘
+                                  │   └─────────┬─────────┘   │
+                                  └─────────────┼─────────────┘
                                                 │
-                                       ┌────────┴────────┐
-                                       ▼                 ▼
-                        ┌─────────────────────┐   ┌─────────────────────┐
-                        │ NVIDIA NIM Endpoint │   │  Supabase Cloud     │
-                        │ • Nemotron 550B     │   │  • Postgres Metadata│
-                        │ • MiniMax-M3        │   │  • Storage Buckets  │
-                        └─────────────────────┘   └─────────────────────┘
+                                  ┌─────────────┼─────────────┐
+                                  ▼             ▼             ▼
+                    ┌──────────────────┐ ┌──────────────┐ ┌──────────────────┐
+                    │ NVIDIA NIM       │ │ Groq API     │ │ Supabase Cloud   │
+                    │ • Nemotron 550B  │ │ • GPT-OSS    │ │ • Postgres Meta  │
+                    │ • MiniMax-M3     │ │   120B       │ │ • Storage Bucket │
+                    └──────────────────┘ └──────────────┘ └──────────────────┘
 ```
 
 ---
@@ -76,6 +78,9 @@ NVIDIA_API_KEY_GLM="nvapi-glm-key"
 NVIDIA_API_KEY_KIMI="nvapi-kimi-key"
 NVIDIA_API_KEY_MINIMAX="nvapi-minimax-key"
 NVIDIA_API_KEY_NEMOTRON="nvapi-nemotron-key"
+
+# Groq API
+GROQ_API_KEY="gsk-your-groq-key"
 
 # Database (Supabase)
 SUPABASE_URL="https://your-project.supabase.co"

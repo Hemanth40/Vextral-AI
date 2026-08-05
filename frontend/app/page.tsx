@@ -56,7 +56,7 @@ export default function Home() {
           <div className="feature-icon blue">🧠</div>
           <h3 className="feature-title">Multi-Model Intelligence</h3>
           <p className="feature-desc">
-            Document chat powered by Gemini 3.5 with 1M context. General chat powered by Kimi K2.6, GLM-5.1, MiniMax-M3, and Nemotron 3 550B.
+            Document chat powered by Gemini 3.5 with 1M context. General chat powered by Kimi K2.6, GLM-5.1, MiniMax-M3, Nemotron 3 550B, and GPT-OSS 120B.
           </p>
         </div>
         <div className="feature-card">
@@ -91,7 +91,7 @@ export default function Home() {
             <div className="stat-label">File Formats</div>
           </div>
           <div className="stat-card">
-            <div className="stat-value">6</div>
+            <div className="stat-value">7</div>
             <div className="stat-label">AI Models</div>
           </div>
         </div>
