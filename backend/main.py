@@ -51,7 +51,7 @@ async def startup_event():
     logger.info("🚀 Vextral API Started Successfully")
     logger.info("="*60)
     logger.info("📚 Multi-Tenant RAG Platform")
-    logger.info("🤖 Powered by Multi-Model AI (Gemini + Kimi + DeepSeek + GLM)")
+    logger.info("🤖 Powered by Multi-Model AI (Gemini + Groq GPT-OSS 120B + MiniMax-M3 + Nemotron-3)")
     logger.info("="*60)
 
 

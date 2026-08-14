@@ -16,13 +16,11 @@ A premium, production-ready, multi-tenant RAG platform that allows users to uplo
 ## 🚀 Key Features
 
 * 🧬 **Zero-Loss Native Scan RAG**: Replaced heavy vector chunk indexing (Qdrant / LanceDB) with **Gemini File API direct document scans**. Full multi-modal files (up to 1M tokens) are analyzed natively — tables, layouts, charts, and cross-references preserved exactly as they exist.
-* 🧠 **7-Model AI Grid**: Integrated the latest top-tier models:
-  - **`Gemini 3.5 & Gemma 4`** — Primary document readers with full multimodal visual perception.
-  - **`nvidia/nemotron-3-ultra-550b-a55b`** — 550B reasoning model with chain-of-thought logs.
-  - **`minimaxai/minimax-m3`** — Multimodal model (text, image, video).
-  - **`z-ai/glm-5.1`** — Expert coding & software debugging.
-  - **`moonshotai/kimi-k2.6`** — Multi-turn general conversation specialist.
-  - **`openai/gpt-oss-120b`** (via Groq) — Ultra-fast 120B open-source GPT model.
+* 🧠 **4-Model AI Grid**: Integrated the latest high-performance models:
+  - **`Gemini 3.5 Flash`** — Primary document reader with full multimodal visual perception.
+  - **`openai/gpt-oss-120b`** (via Groq) — Ultra-fast 120B open-source GPT model (~1.7s response).
+  - **`minimaxai/minimax-m3`** — Ultra-fast multimodal model (~1.1s response).
+  - **`nvidia/nemotron-3-ultra-550b-a55b`** — 550B deep reasoning model with chain-of-thought traces.
 * 💡 **Interactive Thinking Drawer**: Collapsible UI panel capturing Nemotron's chain-of-thought tokens inside a glassmorphic expander drawer before the final answer.
 * 🎨 **Dark Neumorphic (Soft UI) Design**: Entire interface (Home, Chat, Documents) built with realistic double-shadow elements, inset inputs, and beveled metadata badges.
 * 📦 **Cloud-Native Storage**: Supabase Storage Buckets for document lifecycle management with automatic Google Gemini URI renewal (48h expiry handled transparently).
@@ -42,7 +40,7 @@ A premium, production-ready, multi-tenant RAG platform that allows users to uplo
                                                 ▼
                                   ┌───────────────────────────┐
                                   │      FastAPI Backend      │
-                                  │                           │
+                                  │   (Worker Thread Pool)    │
                                   │   ┌───────────────────┐   │
                                   │   │  Chat & Ask API   │   │
                                   │   └─────────┬─────────┘   │
@@ -71,16 +69,14 @@ Set up your backend API keys in `backend/.env`:
 
 ```env
 # Google GenAI API
-GEMINI_API_KEY="your-google-api-key"
-
-# NVIDIA NIM API Keys
-NVIDIA_API_KEY_GLM="nvapi-glm-key"
-NVIDIA_API_KEY_KIMI="nvapi-kimi-key"
-NVIDIA_API_KEY_MINIMAX="nvapi-minimax-key"
-NVIDIA_API_KEY_NEMOTRON="nvapi-nemotron-key"
+GOOGLE_API_KEY="your-google-api-key"
 
 # Groq API
 GROQ_API_KEY="gsk-your-groq-key"
+
+# NVIDIA NIM API Keys
+NVIDIA_API_KEY_MINIMAX="nvapi-minimax-key"
+NVIDIA_API_KEY_NEMOTRON="nvapi-nemotron-key"
 
 # Database (Supabase)
 SUPABASE_URL="https://your-project.supabase.co"

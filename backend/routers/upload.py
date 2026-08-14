@@ -1,10 +1,9 @@
 """
 Vextral Upload Router
 Handles document upload, listing, and deletion for Vextral v2.
-Integrates Supabase Storage and Gemini File API.
+Integrates Supabase Storage and Gemini File API on FastAPI worker thread pool.
 """
 
-import os
 import logging
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from dotenv import load_dotenv
@@ -20,27 +19,28 @@ router = APIRouter(prefix="/upload", tags=["upload"])
 
 
 @router.post("/document")
-async def upload_document(
+def upload_document(
     file: UploadFile = File(...),
     tenant_id: str = Form(...)
 ):
     """
     Upload and process a document.
     Permanently stores in Supabase Storage, then registers with Gemini File API.
+    Executed in thread pool to prevent blocking.
     """
     logger.info(f"{'='*60}")
     logger.info(f"📄 Processing upload: {file.filename} for tenant: {tenant_id}")
-    
+
     # 1. Validate file type
     allowed_extensions = ['.pdf', '.docx', '.txt', '.csv', '.md', '.json', '.png', '.jpg', '.jpeg', '.webp']
     file_ext = '.' + file.filename.lower().split('.')[-1]
-    
+
     if file_ext not in allowed_extensions:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
         )
-    
+
     try:
         # 2. Enforce limits: Max 5 documents per tenant
         doc_count = count_documents(tenant_id)
@@ -51,25 +51,25 @@ async def upload_document(
             )
 
         # 3. Read file bytes and enforce size limit
-        file_bytes = await file.read()
+        file_bytes = file.file.read()
         MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
-        
+
         if len(file_bytes) > MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=413,
                 detail="File is too large. Maximum allowed size is 50MB."
             )
-            
+
         logger.info(f"✓ Read {len(file_bytes)} bytes from {file.filename}")
-        
+
         # 4. Upload permanently to Supabase Storage
         logger.info("⚙️ Uploading to Supabase Storage...")
         supabase_path = file_storage.upload_file(tenant_id, file.filename, file_bytes)
-        
+
         # 5. Upload to Gemini File API
         logger.info("⚙️ Registering with Gemini File API...")
         gemini_data = gemini_reader.upload_to_gemini(file_bytes, file.filename)
-        
+
         # 6. Save metadata to database
         logger.info("⚙️ Saving document metadata...")
         insert_document(
@@ -80,17 +80,17 @@ async def upload_document(
             gemini_file_uri=gemini_data["gemini_file_uri"],
             gemini_expires_at=gemini_data["gemini_expires_at"]
         )
-        
+
         logger.info(f"✅ SUCCESS: {file.filename} processed successfully!")
         logger.info(f"{'='*60}")
-        
+
         return {
             "success": True,
             "filename": file.filename,
             "supabase_path": supabase_path,
             "gemini_file_uri": gemini_data["gemini_file_uri"]
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -100,7 +100,7 @@ async def upload_document(
 
 
 @router.get("/list/{tenant_id}")
-async def list_tenant_documents(tenant_id: str):
+def list_tenant_documents(tenant_id: str):
     """
     List all documents for a tenant.
     """
@@ -117,12 +117,12 @@ async def list_tenant_documents(tenant_id: str):
 
 
 @router.delete("/document/{filename}")
-async def delete_document_endpoint(filename: str, tenant_id: str):
+def delete_document_endpoint(filename: str, tenant_id: str):
     """
     Delete a document and clean up all storage.
     """
     logger.info(f"🗑️ Deleting document: {filename} for tenant: {tenant_id}")
-    
+
     try:
         # Fetch metadata
         doc = get_document(tenant_id, filename)
@@ -132,23 +132,22 @@ async def delete_document_endpoint(filename: str, tenant_id: str):
         # 1. Delete from Supabase Storage
         if doc.get("supabase_path"):
             file_storage.delete_file(doc["supabase_path"])
-        
+
         # 2. Delete from Gemini File API
         if doc.get("gemini_file_uri"):
             gemini_reader.delete_from_gemini(doc["gemini_file_uri"])
-        
+
         # 3. Delete database record
         delete_document(tenant_id, filename)
-        
+
         logger.info(f"✓ Deleted {filename} successfully")
         return {
             "success": True,
             "message": f"Document {filename} deleted successfully"
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"❌ Error deleting document: {e}")
         raise HTTPException(status_code=500, detail=f"Deletion failed: {str(e)}")
-

@@ -31,7 +31,7 @@ export default function Home() {
       <section className="hero">
         <div className="hero-badge">
           <span className="hero-badge-dot" />
-          Powered by Gemini 3.5 + Kimi K2.6 + GLM-5.1 + MiniMax-M3 + Nemotron-3
+          Powered by Gemini 3.5 + GPT-OSS 120B + MiniMax-M3 + Nemotron-3
         </div>
         <h1 className="hero-title">
           Your Documents,<br />Supercharged by AI
@@ -56,7 +56,7 @@ export default function Home() {
           <div className="feature-icon blue">🧠</div>
           <h3 className="feature-title">Multi-Model Intelligence</h3>
           <p className="feature-desc">
-            Document chat powered by Gemini 3.5 with 1M context. General chat powered by Kimi K2.6, GLM-5.1, MiniMax-M3, Nemotron 3 550B, and GPT-OSS 120B.
+            Document chat powered by Gemini 3.5 with 1M context. General chat powered by GPT-OSS 120B, MiniMax-M3, and Nemotron 3 550B.
           </p>
         </div>
         <div className="feature-card">
@@ -79,7 +79,7 @@ export default function Home() {
       <section className="stats-section">
         <div className="stats-grid">
           <div className="stat-card">
-            <div className="stat-value">2-5s</div>
+            <div className="stat-value">1-3s</div>
             <div className="stat-label">Response Time</div>
           </div>
           <div className="stat-card">
@@ -91,7 +91,7 @@ export default function Home() {
             <div className="stat-label">File Formats</div>
           </div>
           <div className="stat-card">
-            <div className="stat-value">7</div>
+            <div className="stat-value">4</div>
             <div className="stat-label">AI Models</div>
           </div>
         </div>

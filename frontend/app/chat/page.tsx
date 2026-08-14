@@ -228,13 +228,9 @@ export default function Chat() {
               className="selector-select model-select"
             >
               <option value="gemini">👑 Gemini 3.5 (Primary)</option>
-              <option value="gemma">🤖 Gemma 4 (Google Studio)</option>
-              <option value="kimi">🧠 Kimi K2.6 (NVIDIA NIM)</option>
-              <option value="glm-5.1">💻 GLM 5.1 (Coding Expert)</option>
-              <option value="minimax">🎨 MiniMax-M3 (Multimodal)</option>
-              <option value="nemotron-550b">🧠 Nemotron 3 550B</option>
-              {/* Groq GPT-OSS 120B Model */}
               <option value="groq">⚡ GPT-OSS 120B (Groq)</option>
+              <option value="minimax">🎨 MiniMax-M3 (NVIDIA NIM)</option>
+              <option value="nemotron-550b">🧠 Nemotron 3 550B (Reasoning)</option>
             </select>
           </div>
 
@@ -266,17 +262,11 @@ export default function Chat() {
                   : `Ask me anything — I'm powered by ${
                       selectedModel === 'gemini'
                         ? '👑 Gemini 3.5'
-                        : selectedModel === 'gemma'
-                        ? '🤖 Gemma 4'
-                        : selectedModel === 'kimi'
-                        ? '🧠 Kimi K2.6'
-                        : selectedModel === 'glm-5.1'
-                        ? '💻 GLM 5.1'
+                        : selectedModel === 'groq'
+                        ? '⚡ GPT-OSS 120B'
                         : selectedModel === 'minimax'
                         ? '🎨 MiniMax-M3'
-                        : selectedModel === 'nemotron-550b'
-                        ? '🧠 Nemotron 3'
-                        : '⚡ GPT-OSS 120B'
+                        : '🧠 Nemotron 3 550B'
                     } AI.`}
               </p>
               <div className="empty-suggestions">
